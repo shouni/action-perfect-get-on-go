@@ -107,4 +107,5 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ## 📜 ライセンス (License)
 
+
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
