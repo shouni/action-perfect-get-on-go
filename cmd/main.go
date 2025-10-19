@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"action-perfect-get-on-go/pkg/cleaner"
@@ -76,7 +77,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 
 	// 1. 無条件遅延 (2秒)
 	log.Println("並列抽出が完了しました。サーバー負荷を考慮し、次の処理に進む前に2秒待機します。")
-	time.Sleep(2 * time.Second) // ⭐ ここを2秒に修正 ⭐
+	time.Sleep(2 * time.Second)
 
 	// 2. 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
@@ -144,6 +145,20 @@ func classifyResults(results []types.URLResult) (successfulResults []types.URLRe
 	return successfulResults, failedURLs
 }
 
+// formatErrorLog は、冗長なHTMLボディを含むエラーメッセージを、ステータスコード情報のみに短縮します。
+func formatErrorLog(err error) string {
+	errMsg := err.Error()
+	if idx := strings.Index(errMsg, ", ボディ: <!"); idx != -1 {
+		errMsg = errMsg[:idx]
+	}
+
+	if idx := strings.LastIndex(errMsg, "最終エラー:"); idx != -1 {
+		return strings.TrimSpace(errMsg[idx:])
+	}
+
+	return errMsg
+}
+
 // processFailedURLs は失敗したURLに対して5秒待機後、1回だけ順次リトライを実行します。
 func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration) ([]types.URLResult, error) {
 	log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
@@ -166,7 +181,8 @@ func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout 
 		content, err := retryScraperClient.ExtractContent(url, ctx)
 
 		if err != nil || content == "" {
-			log.Printf("❌ ERROR: リトライでも %s の抽出に失敗しました: %v", url, err)
+			formattedErr := formatErrorLog(err)
+			log.Printf("❌ ERROR: リトライでも %s の抽出に失敗しました: %s", url, formattedErr)
 		} else {
 			log.Printf("✅ SUCCESS: %s の抽出がリトライで成功しました。", url)
 			retriedSuccessfulResults = append(retriedSuccessfulResults, types.URLResult{
