@@ -15,14 +15,14 @@ import (
 )
 
 // コマンドラインオプションのグローバル変数
+var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
 
 func init() {
-	// ⭐ 修正点: LLMタイムアウトをフラグで設定可能にする
 	rootCmd.PersistentFlags().DurationVarP(&llmTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
-	// ⭐ 修正点: スクレイパータイムアウトをフラグで設定可能にする
 	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
+	rootCmd.PersistentFlags().StringVarP(&llmAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 }
 
 // プログラムのエントリーポイント
@@ -93,7 +93,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 3. AIクリーンアップフェーズ (LLM) ---
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
 
-	cleanedText, err := cleaner.CleanAndStructureText(ctx, combinedText)
+	cleanedText, err := cleaner.CleanAndStructureText(ctx, combinedText, llmAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
