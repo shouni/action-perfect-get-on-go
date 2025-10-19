@@ -29,8 +29,9 @@
 | :--- | :--- | :--- |
 | **言語** | **Go (Golang)** | ツールの開発言語。並列処理と堅牢な実行環境を提供します。 |
 | **CLI** | **Cobra** | コマンドライン引数とオプションの解析に使用します。 |
-| **Web抽出** | **`github.com/shouni/go-web-exact`** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
-| **AI通信** | **`github.com/shouni/go-ai-client`** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
+| **Web抽出** | **[`github.com/shouni/go-web-exact`](https://github.com/shouni/go-web-exact)** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
+| **AI通信** | **[`github.com/shouni/go-ai-client`](https://github.com/shouni/go-ai-client)** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
+| **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセスを同時に高速で実行します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセスを同時に高速で実行します。 |
 
 -----
