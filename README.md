@@ -47,7 +47,7 @@ go mod tidy
 
 # 実行ファイルを bin/ ディレクトリに生成
 go build -o bin/llm_cleaner ./cmd
-````
+```
 
 実行ファイルは `./bin/llm_cleaner` に生成されます。
 
