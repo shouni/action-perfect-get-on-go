@@ -62,7 +62,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// ParallelScraperの初期化 (エラーをチェック)
 	s, err := scraper.NewParallelScraper(scraperTimeout)
 	if err != nil {
-		// ⭐ 修正 1: 初期化失敗時にログに出力
+		// 初期化失敗時にログに出力
 		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
 		return fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
@@ -71,7 +71,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	results := s.ScrapeInParallel(ctx, urls)
 
 	// -----------------------------------------------------------
-	// ⭐ 1秒無条件遅延と結果の分類 ⭐
+	// 1秒無条件遅延と結果の分類
 	// -----------------------------------------------------------
 
 	// 1. 無条件遅延 (1秒)
@@ -81,9 +81,11 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// 2. 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
 
+	// 初期成功数を保持
+	initialSuccessfulCount := len(successfulResults)
+
 	// 3. 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
-		// ⭐ 修正 2: リトライロジックを processFailedURLs 関数に切り出し
 		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, scraperTimeout)
 		if retryErr != nil {
 			// 初期化エラーが発生した場合の警告 (処理は続行)
@@ -103,8 +105,9 @@ func runMain(cmd *cobra.Command, args []string) error {
 
 	combinedText := cleaner.CombineContents(successfulResults)
 
-	log.Printf("結合されたテキストの長さ: %dバイト (成功: %d/%d URL)",
-		len(combinedText), len(successfulResults), len(urls))
+	// ログ出力に初期成功数と最終成功数を明記
+	log.Printf("結合されたテキストの長さ: %dバイト (初期成功: %d/%d URL, 最終成功: %d/%d URL)",
+		len(combinedText), initialSuccessfulCount, len(urls), len(successfulResults), len(urls))
 
 	// --- 3. AIクリーンアップフェーズ (LLM) ---
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
@@ -125,7 +128,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 }
 
 // ----------------------------------------------------------------
-// ⭐ 新しいヘルパー関数
+// ヘルパー関数
 // ----------------------------------------------------------------
 
 // classifyResults は並列抽出の結果を成功と失敗に分類します。
