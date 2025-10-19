@@ -5,30 +5,38 @@
 
 ## 🌟 概要: 完璧な情報取得とAI構造化
 
-**action-perfect-get-on-go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** によって**重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
+**Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** によって**重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
 
 ### 🚨 サブ概要：Action Perfect Get On Ready to Go
+
 > **銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み**
+
+-----
 
 ### 🛠️ 主な機能
 
 1.  **並列Webスクレイピング**: 複数のURLからの本文抽出をGoルーチンで同時に実行し、時間を大幅に短縮します。（内部で `go-web-exact` を利用）
-2.  **AI駆動のデータクリーンアップ**: 結合されたテキストから重複コンテンツやノイズ（フッター、ナビゲーションなど）を排除し、情報構造を再構築します。（内部で `go-ai-client` を利用）
-3.  **堅牢なエラーハンドリング**: ネットワークエラーやAPI制限に対応するため、各フェーズでタイムアウトとリトライ機構を備えています。
+2.  **AI駆動のデータクリーンアップと構造化**: 結合されたテキストから重複コンテンツやノイズ（フッター、ナビゲーションなど）を排除し、情報構造を再構築します。（内部で `go-ai-client` を利用）
+3.  **堅牢な入力制御**: LLMへの入力がモデルのトークン制限を超過するのを防ぐため、自動でテキストを安全な長さに**切り詰めます**。
+4.  **柔軟な設定と堅牢なエラーハンドリング**: LLM APIキーを**CLIオプション**または環境変数で設定可能にし、各フェーズでタイムアウトとリトライ機構を備えています。
+
+-----
 
 ## ✨ 技術スタック
 
 | 要素 | 技術 / ライブラリ | 役割 |
 | :--- | :--- | :--- |
 | **言語** | **Go (Golang)** | ツールの開発言語。並列処理と堅牢な実行環境を提供します。 |
-| **CLI** | **Cobra** | コマンドライン引数（URLリスト）の解析に使用します。 |
+| **CLI** | **Cobra** | コマンドライン引数とオプションの解析に使用します。 |
 | **Web抽出** | **`github.com/shouni/go-web-exact`** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
-| **AI通信** | **`github.com/shouni/go-ai-client`** | LLM（Geminiなど）への通信を管理し、自動リトライ機能を提供します。 |
+| **AI通信** | **`github.com/shouni/go-ai-client`** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセスを同時に高速で実行します。 |
+
+-----
 
 ## 🛠️ 事前準備と設定
 
-### 1. ビルド
+### 1\. ビルド
 
 ```bash
 # リポジトリをクローン
@@ -40,51 +48,61 @@ go mod tidy
 
 # 実行ファイルを bin/ ディレクトリに生成
 go build -o bin/llm_cleaner ./cmd
-````
+```
 
 実行ファイルは `./bin/llm_cleaner` に生成されます。
 
-### 2\. 環境変数の設定 (必須)
+### 2\. LLM API キーの設定 (必須)
 
-LLMを利用するために、APIキーを環境変数に設定する必要があります。
+LLM（Gemini）を利用するためには、APIキーが必要です。設定は以下の**どちらか**の方法で行います。
+
+* **推奨**: コマンド実行時に `-k` または `--api-key` フラグで直接指定する。
+* **代替**: 環境変数 `GEMINI_API_KEY` を設定する。
+
+**注意**: コマンドラインフラグでキーを指定した場合、環境変数の設定よりも**常に優先されます**。
 
 ```bash
-# LLM API キー (go-ai-client が参照します)
+# 例: 環境変数に設定する場合
 export GEMINI_API_KEY="YOUR_GEMINI_API_KEY" 
-# または、go-ai-client が対応するその他のモデルのキー
 ```
+
+-----
 
 ## 🚀 使い方 (Usage)
 
-本ツールは、処理対象のURLを\*\*コマンドライン引数（可変長）\*\*として受け取ります。これにより、柔軟に複数のURLを指定できます。
+本ツールは、処理対象のURLを**コマンドライン引数**として受け取ります。
 
-### 実行コマンド形式
+### 実行コマンド形式とオプション
 
-```bash
-./bin/llm_cleaner [https://www.youtube.com/watch?v=KsZ6tROaVOQ](https://www.youtube.com/watch?v=KsZ6tROaVOQ) [https://www.youtube.com/watch?v=-s7TCuCpB5c](https://www.youtube.com/watch?v=-s7TCuCpB5c) [https://www.youtube.com/watch?v=ep9zgmN9BNA](https://www.youtube.com/watch?v=ep9zgmN9BNA) [https://en.wikipedia.org/wiki/4](https://en.wikipedia.org/wiki/4) ... [https://en.wikipedia.org/wiki/N](https://en.wikipedia.org/wiki/N)
-```
-
-**注意:** 処理を実行するには、少なくとも2つ以上のURLを指定する必要があります。
-
-### 実行例
+| オプション | フラグ | 説明 | デフォルト値 |
+| :--- | :--- | :--- | :--- |
+| `--api-key` | `-k` | **Gemini APIキー**を直接指定します（推奨）。 | なし |
+| `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
+| `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
 
 ```bash
-./bin/llm_cleaner \
-    [https://blog.go-lang.org/intro-to-go](https://blog.go-lang.org/intro-to-go) \
-    [https://go.dev/doc/effective_go](https://go.dev/doc/effective_go) \
-    [https://go.dev/doc/code](https://go.dev/doc/code) \
-    [https://blog.go-lang.org/concurrency-is-not-parallelism](https://blog.go-lang.org/concurrency-is-not-parallelism)
+# 最小実行形式 (環境変数にAPIキーが設定されている場合)
+./bin/llm_cleaner https://www.youtube.com/watch?v=KsZ6tROaVOQ https://www.youtube.com/watch?v=-s7TCuCpB5c ...
+
+# 推奨実行形式 (APIキーとカスタムタイムアウトを指定)
+./bin/llm_cleaner -k "YOUR_API_KEY" -s 30s -t 3m \
+    https://example.com/page-a \
+    https://example.com/page-b \
+    https://example.com/page-c
 ```
+
+**注意**: 処理を実行するには、**少なくとも1つ以上のURL**を指定する必要があります。
 
 ### 🗃️ 処理の流れ
 
 1.  コマンドライン引数で渡された複数のURLへのアクセスが**同時に**開始されます。
 2.  `go-web-exact`により各ページの本文が抽出されます。
-3.  抽出された本文が一つに結合されます。
+3.  抽出された本文が一つに結合され、**サイズ制限チェック**を受けます。
 4.  結合テキストが専用のプロンプトと共にLLMに送信されます。
-5.  LLMが重複を排除し、構造化した最終的なテキストが標準出力に出力されます。
+5.  LLMが重複を排除し、構造化した最終的なテキスト（Markdown形式）が標準出力に出力されます。
+
+-----
 
 ## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
