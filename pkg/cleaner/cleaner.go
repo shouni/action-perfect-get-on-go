@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync" // ⭐ 追加: 並列処理のため
+	"sync"
 
 	"action-perfect-get-on-go/pkg/types"
 
@@ -15,8 +15,11 @@ import (
 // ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
 const ContentSeparator = "\n\n--- DOCUMENT END ---\n\n"
 
+// DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
+const DefaultSeparator = "\n\n"
+
 // MaxSegmentChars は、MapフェーズでLLMに一度に渡す安全な最大文字数。
-// この値は、最終的な構造化プロセスで情報が欠落しないよう、トークン制限（200万）に十分なマージンを持たせた値です。
+// トークン制限に十分なマージンを持たせた値です。
 const MaxSegmentChars = 400000
 
 // CombineContents は、成功した抽出結果の本文を効率的に結合します。
@@ -24,11 +27,9 @@ func CombineContents(results []types.URLResult) string {
 	var builder strings.Builder
 
 	for i, res := range results {
-		// URLを追記することで、LLMがどのソースのテキストであるかを識別できるようにする
 		builder.WriteString(fmt.Sprintf("--- SOURCE URL %d: %s ---\n", i+1, res.URL))
 		builder.WriteString(res.Content)
 
-		// 最後の文書でなければ区切り文字を追加
 		if i < len(results)-1 {
 			builder.WriteString(ContentSeparator)
 		}
@@ -41,7 +42,7 @@ func CombineContents(results []types.URLResult) string {
 // 並列処理（MapReduceパターン）で最終的な構造化テキストを生成します。
 func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
 
-	// 1. LLMクライアントの初期化 (APIキーの柔軟性向上)
+	// 1. LLMクライアントの初期化
 	var client *gemini.Client
 	var err error
 
@@ -52,7 +53,8 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキーを確認してください: %w", err)
+		// ⭐ 修正: エラーメッセージを明確化
+		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキー（--api-keyオプションまたは環境変数）が設定されているか確認してください: %w", err)
 	}
 
 	// 2. Mapフェーズのためのテキスト分割
@@ -69,10 +71,10 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
-	log.Println("中間要約を結合し、最終的な構造化（Reduceフェーズ）を開始します。")
+	// ⭐ 修正: ログメッセージを結合完了後に移動
+	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
 	finalPrompt := buildFinalReducePrompt(finalCombinedText)
-	// モデルは構造化に適したものを指定
 	finalResponse, err := client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
 	if err != nil {
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
@@ -97,30 +99,32 @@ func segmentText(text string, maxChars int) []string {
 			break
 		}
 
-		// 最大サイズに近い位置で最後の改行（段落区切り）を探す
-		splitIndex := maxChars // デフォルトは最大文字数で強制分割
-		segmentCandidate := string(current[:maxChars])
+		// 最大サイズに近い位置で最後の区切り（ContentSeparatorなど）を探す
+		splitIndex := maxChars
+		segmentCandidate := string(current[:maxChars]) // Runeからstringに変換
+		separatorFound := false
+		separatorLen := 0
 
-		// 最後の大きな区切り文字（ContentSeparatorの区切りなど）を探す
-		lastSeparatorLen := 0
-		lastSeparatorIndex := strings.LastIndex(segmentCandidate, ContentSeparator)
-		if lastSeparatorIndex != -1 {
-			lastSeparatorLen = len(ContentSeparator)
-		} else {
-			// ContentSeparator が見つからない場合、一般的な改行(\n\n)を探す
-			lastSeparatorIndex = strings.LastIndex(segmentCandidate, "\n\n")
-			if lastSeparatorIndex != -1 {
-				lastSeparatorLen = len("\n\n")
-			}
+		// 1. ContentSeparator (最高優先度) を探す
+		if lastSepIdx := strings.LastIndex(segmentCandidate, ContentSeparator); lastSepIdx != -1 && lastSepIdx > maxChars/2 {
+			splitIndex = lastSepIdx
+			separatorLen = len(ContentSeparator)
+			separatorFound = true
+		} else if lastSepIdx := strings.LastIndex(segmentCandidate, DefaultSeparator); lastSepIdx != -1 && lastSepIdx > maxChars/2 {
+			// 2. ContentSeparator が見つからない場合、一般的な改行(\n\n)を探す
+			splitIndex = lastSepIdx
+			separatorLen = len(DefaultSeparator)
+			separatorFound = true
 		}
 
-		if lastSeparatorIndex != -1 && lastSeparatorIndex > maxChars/2 {
-			// 分割位置を安全な区切り文字の直後に設定
-			splitIndex = lastSeparatorIndex + lastSeparatorLen
+		// ⭐ 修正: splitIndex の計算ロジックを修正
+		if separatorFound {
+			// 区切り文字の直後までを分割位置とする
+			splitIndex += separatorLen
 		} else {
 			// 安全な区切りが見つからない場合は、そのまま最大文字数で切り、警告を出す
 			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。", maxChars)
-			// splitIndex は maxChars のまま
+			splitIndex = maxChars
 		}
 
 		segments = append(segments, string(current[:splitIndex]))
@@ -145,10 +149,7 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 		go func(index int, seg string) {
 			defer wg.Done()
 
-			// セグメント処理用のプロンプトを生成
 			prompt := buildSegmentMapPrompt(seg)
-
-			// LLM APIを呼び出し
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
@@ -156,7 +157,7 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 				resultsChan <- struct {
 					summary string
 					err     error
-				}{summary: "", err: fmt.Errorf("セグメント %d 処理失敗: %w", index+1, err)}
+				}{summary: "", err: fmt.Errorf("segment %d processing failed: %w", index+1, err)}
 				return
 			}
 
@@ -173,7 +174,6 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 	var summaries []string
 	for res := range resultsChan {
 		if res.err != nil {
-			// 一つでもセグメント処理で失敗したら、全体を失敗とする
 			return nil, res.err
 		}
 		summaries = append(summaries, res.summary)
@@ -185,13 +185,13 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 // buildSegmentMapPrompt は、個々のセグメントを要約するためのプロンプトを生成します。
 func buildSegmentMapPrompt(segmentText string) string {
 	var sb strings.Builder
-	sb.WriteString("以下のテキストセグメントに含まれる情報を、冗長な表現を排除してMarkdown形式でクリーンアップし、構造化してください。\n")
-	sb.WriteString("このセグメント内の重複情報は排除してください。\n")
-	sb.WriteString("【注意】これは中間処理です。情報を見落とさず、後続の処理で全体の構造化ができるよう、論理的なヘッダーを付けて出力してください。\n\n")
-	sb.WriteString("--- 入力セグメント ---\n")
+	sb.WriteString("Summarize and clean up the information in the following text segment in Markdown format, eliminating redundant expressions.\n")
+	sb.WriteString("Remove any duplicate information within this segment.\n")
+	sb.WriteString("【NOTE】This is an intermediate process. Ensure all information is preserved, and provide logical headers to facilitate overall structuring in subsequent processes.\n\n")
+	sb.WriteString("--- Input Segment ---\n")
 	sb.WriteString(segmentText)
 	sb.WriteString("\n------------------------\n\n")
-	sb.WriteString("✅ クリーンアップされたMarkdownテキストを出力してください:")
+	sb.WriteString("✅ Output the cleaned Markdown text:")
 
 	return sb.String()
 }
@@ -199,18 +199,18 @@ func buildSegmentMapPrompt(segmentText string) string {
 // buildFinalReducePrompt は、すべての中間要約を統合するためのプロンプトを生成します。
 func buildFinalReducePrompt(finalCombinedText string) string {
 	var sb strings.Builder
-	sb.WriteString("以下のテキストは、複数のウェブページから抽出された情報をセグメントごとに処理した中間要約の集合体です。\n")
-	sb.WriteString("あなたのタスクは、これらの情報を**完璧に統合**し、**最終的な構造化文書**を作成することです。\n\n")
-	sb.WriteString("--- 最終処理指示 ---\n")
-	sb.WriteString("1. **最終的な重複排除**: 中間要約間に残っている重複情報を識別し、最も完全な情報のみを残して、完全に統合してください。\n")
-	sb.WriteString("2. **論理的な構造化**: 全体を一つのトピックとして再構成し、最も論理的で分かりやすい階層構造（Markdownヘッダー）にしてください。\n")
-	sb.WriteString("3. **ノイズ除去**: 中間処理時に残った不要なメッセージやノイズはすべて削除してください。\n")
-	sb.WriteString("4. **出力形式**: 出力は、Markdown形式のクリーンなテキストのみとし、追加の説明や感想は一切含めないでください。\n")
+	sb.WriteString("The following text is a collection of intermediate summaries processed segment by segment from information extracted from multiple web pages.\n")
+	sb.WriteString("Your task is to **perfectly integrate** this information and create a **final structured document**.\n\n")
+	sb.WriteString("--- Final Processing Instructions ---\n")
+	sb.WriteString("1. **Final Deduplication**: Identify any remaining duplicate information between intermediate summaries and integrate them completely, retaining only the most complete information.\n")
+	sb.WriteString("2. **Logical Structuring**: Reconstruct the entire content as a single topic, applying the most logical and easy-to-understand hierarchical structure (Markdown headers).\n")
+	sb.WriteString("3. **Noise Removal**: Remove any unnecessary messages or noise remaining from the intermediate processing.\n")
+	sb.WriteString("4. **Output Format**: The output must be clean Markdown text only, without any additional explanations or comments.\n")
 	sb.WriteString("----------------\n\n")
-	sb.WriteString("--- 中間要約結合テキスト ---\n")
+	sb.WriteString("--- Combined Intermediate Summaries ---\n")
 	sb.WriteString(finalCombinedText)
 	sb.WriteString("\n------------------------\n\n")
-	sb.WriteString("✅ 最終的な構造化文書を出力してください:")
+	sb.WriteString("✅ Output the final structured document:")
 
 	return sb.String()
 }
