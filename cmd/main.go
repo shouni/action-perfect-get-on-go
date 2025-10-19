@@ -62,7 +62,8 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// ParallelScraperの初期化 (エラーをチェック)
 	s, err := scraper.NewParallelScraper(scraperTimeout)
 	if err != nil {
-		// 行番号 67-69 の修正: エラーメッセージを簡潔化
+		// ⭐ 修正 1: 初期化失敗時にログに出力
+		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
 		return fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
 
@@ -70,7 +71,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	results := s.ScrapeInParallel(ctx, urls)
 
 	// -----------------------------------------------------------
-	// ⭐ 1秒無条件遅延と失敗URLリトライロジック ⭐
+	// ⭐ 1秒無条件遅延と結果の分類 ⭐
 	// -----------------------------------------------------------
 
 	// 1. 無条件遅延 (1秒)
@@ -78,57 +79,22 @@ func runMain(cmd *cobra.Command, args []string) error {
 	time.Sleep(1 * time.Second)
 
 	// 2. 結果の分類
-	var successfulResults []types.URLResult
-	var failedURLs []string
+	successfulResults, failedURLs := classifyResults(results)
 
-	for _, res := range results {
-		// エラーが発生した、またはコンテンツが空の場合は失敗と見なす
-		if res.Error != nil || res.Content == "" {
-			log.Printf("❌ ERROR: %s の抽出に失敗しました: %v", res.URL, res.Error)
-			failedURLs = append(failedURLs, res.URL)
-		} else {
-			successfulResults = append(successfulResults, res)
-		}
-	}
-
-	// 3. 失敗URLがある場合、追加で5秒待機後に順次リトライ
+	// 3. 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
-		// 行番号 84 の修正: 日本語表現を「ありました」に変更
-		log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
-		time.Sleep(5 * time.Second) // リトライ前の追加遅延
-
-		// リトライ用の非並列クライアントを初期化
-		retryScraperClient, err := scraper.NewClient(scraperTimeout)
-		if err != nil {
-			// 行番号 89-91 の修正: WARNINGレベルに変更
-			log.Printf("WARNING: リトライ用スクレイパーの初期化に失敗しました: %v。リトライ処理は実行されません。", err)
-		} else {
-			log.Println("--- 1b. 失敗URLの順次リトライを開始 ---")
-
-			for _, url := range failedURLs {
-				log.Printf("リトライ中: %s", url)
-
-				// 順次再試行 (非並列)
-				content, err := retryScraperClient.ExtractContent(url, ctx)
-
-				if err != nil || content == "" {
-					log.Printf("❌ ERROR: リトライでも %s の抽出に失敗しました: %v", url, err)
-				} else {
-					log.Printf("✅ SUCCESS: %s の抽出がリトライで成功しました。", url)
-					// リトライで成功したものを成功リストに追加
-					successfulResults = append(successfulResults, types.URLResult{
-						URL:     url,
-						Content: content,
-						Error:   nil,
-					})
-				}
-			}
+		// ⭐ 修正 2: リトライロジックを processFailedURLs 関数に切り出し
+		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, scraperTimeout)
+		if retryErr != nil {
+			// 初期化エラーが発生した場合の警告 (処理は続行)
+			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
 		}
+		// リトライで成功した結果をメインのリストに追加
+		successfulResults = append(successfulResults, retriedSuccessfulResults...)
 	}
 
 	// 成功URLがゼロの場合は終了
 	if len(successfulResults) == 0 {
-		// 行番号 112 の修正: ユーザーフレンドリーなメッセージに変更
 		return fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
@@ -156,4 +122,56 @@ func runMain(cmd *cobra.Command, args []string) error {
 	fmt.Println("===============================================")
 
 	return nil
+}
+
+// ----------------------------------------------------------------
+// ⭐ 新しいヘルパー関数
+// ----------------------------------------------------------------
+
+// classifyResults は並列抽出の結果を成功と失敗に分類します。
+func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
+	for _, res := range results {
+		// エラーが発生した、またはコンテンツが空の場合は失敗と見なす
+		if res.Error != nil || res.Content == "" {
+			failedURLs = append(failedURLs, res.URL)
+		} else {
+			successfulResults = append(successfulResults, res)
+		}
+	}
+	return successfulResults, failedURLs
+}
+
+// processFailedURLs は失敗したURLに対して5秒待機後、1回だけ順次リトライを実行します。
+func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration) ([]types.URLResult, error) {
+	log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
+	time.Sleep(5 * time.Second) // リトライ前の追加遅延
+
+	// リトライ用の非並列クライアントを初期化
+	retryScraperClient, err := scraper.NewClient(scraperTimeout)
+	if err != nil {
+		log.Printf("WARNING: リトライ用スクレイパーの初期化に失敗しました: %v。リトライ処理は実行されません。", err)
+		return nil, err // 初期化エラーは呼び出し元に通知
+	}
+
+	var retriedSuccessfulResults []types.URLResult
+	log.Println("--- 1b. 失敗URLの順次リトライを開始 ---")
+
+	for _, url := range failedURLs {
+		log.Printf("リトライ中: %s", url)
+
+		// 順次再試行 (非並列)
+		content, err := retryScraperClient.ExtractContent(url, ctx)
+
+		if err != nil || content == "" {
+			log.Printf("❌ ERROR: リトライでも %s の抽出に失敗しました: %v", url, err)
+		} else {
+			log.Printf("✅ SUCCESS: %s の抽出がリトライで成功しました。", url)
+			retriedSuccessfulResults = append(retriedSuccessfulResults, types.URLResult{
+				URL:     url,
+				Content: content,
+				Error:   nil,
+			})
+		}
+	}
+	return retriedSuccessfulResults, nil
 }
