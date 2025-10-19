@@ -1,23 +1,22 @@
 # 🤖 Action Perfect Get On Go
 
-[![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 ## 🌟 概要: 完璧な情報取得とAI構造化
 
-**Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** によって**重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
+**Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** の**マルチステップ処理**によって**情報欠落なく重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
 
-### 🚨 サブ概要：Action Perfect Get On Ready to Go
-
-> **銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み**
+### サブ概要：Action Perfect Get On Ready to Go
+**銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み**
 
 -----
 
 ### 🛠️ 主な機能
 
 1.  **並列Webスクレイピング**: 複数のURLからの本文抽出をGoルーチンで同時に実行し、時間を大幅に短縮します。（内部で `go-web-exact` を利用）
-2.  **AI駆動のデータクリーンアップと構造化**: 結合されたテキストから重複コンテンツやノイズ（フッター、ナビゲーションなど）を排除し、情報構造を再構築します。（内部で `go-ai-client` を利用）
-3.  **堅牢な入力制御**: LLMへの入力がモデルのトークン制限を超過するのを防ぐため、自動でテキストを安全な長さに**切り詰めます**。
+2.  **LLMマルチステップ処理 (MapReduce型)**:
+    * 巨大な結合テキストをセグメントに**分割**。
+    * 各セグメントを並列でLLM処理し、**中間要約**を作成。
+    * 中間要約を統合し、**最終的な重複排除と論理構造化**を実行することで、大規模な情報でも情報の欠落を防ぎ、高品質な結果を保証します。
+3.  **AI駆動のデータクリーンアップと構造化**: 結合されたテキストから重複コンテンツやノイズ（フッター、ナビゲーションなど）を排除し、情報構造を再構築します。（内部で `go-ai-client` を利用）
 4.  **柔軟な設定と堅牢なエラーハンドリング**: LLM APIキーを**CLIオプション**または環境変数で設定可能にし、各フェーズでタイムアウトとリトライ機構を備えています。
 
 -----
@@ -36,7 +35,7 @@
 
 ## 🛠️ 事前準備と設定
 
-### 1\. ビルド
+### 1. ビルド
 
 ```bash
 # リポジトリをクローン
@@ -82,13 +81,13 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ```bash
 # 最小実行形式 (環境変数にAPIキーが設定されている場合)
-./bin/llm_cleaner https://www.youtube.com/watch?v=KsZ6tROaVOQ https://www.youtube.com/watch?v=-s7TCuCpB5c ...
+./bin/llm_cleaner [https://www.youtube.com/watch?v=KsZ6tROaVOQ](https://www.youtube.com/watch?v=KsZ6tROaVOQ) [https://www.youtube.com/watch?v=-s7TCuCpB5c](https://www.youtube.com/watch?v=-s7TCuCpB5c) ...
 
 # 推奨実行形式 (APIキーとカスタムタイムアウトを指定)
 ./bin/llm_cleaner -k "YOUR_API_KEY" -s 30s -t 3m \
-    https://example.com/page-a \
-    https://example.com/page-b \
-    https://example.com/page-c
+    [https://example.com/page-a](https://example.com/page-a) \
+    [https://example.com/page-b](https://example.com/page-b) \
+    [https://example.com/page-c](https://example.com/page-c)
 ```
 
 **注意**: 処理を実行するには、**少なくとも1つ以上のURL**を指定する必要があります。
@@ -97,12 +96,14 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 1.  コマンドライン引数で渡された複数のURLへのアクセスが**同時に**開始されます。
 2.  `go-web-exact`により各ページの本文が抽出されます。
-3.  抽出された本文が一つに結合され、**サイズ制限チェック**を受けます。
-4.  結合テキストが専用のプロンプトと共にLLMに送信されます。
-5.  LLMが重複を排除し、構造化した最終的なテキスト（Markdown形式）が標準出力に出力されます。
+3.  抽出された本文が一つに結合され、**LLMのセグメントサイズに応じて複数のチャンクに分割**されます。
+4.  **Mapフェーズ**: 各チャンクが並列でLLMに送られ、中間要約が作成されます。
+5.  **Reduceフェーズ**: すべての中間要約が統合され、最終的な重複排除と構造化が実行されます。
+6.  LLMが構造化した最終的なテキスト（Markdown形式）が標準出力に出力されます。
 
 -----
 
 ## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
+
