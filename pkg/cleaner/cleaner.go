@@ -98,23 +98,29 @@ func segmentText(text string, maxChars int) []string {
 		}
 
 		// 最大サイズに近い位置で最後の改行（段落区切り）を探す
-		splitIndex := maxChars
+		splitIndex := maxChars // デフォルトは最大文字数で強制分割
 		segmentCandidate := string(current[:maxChars])
 
 		// 最後の大きな区切り文字（ContentSeparatorの区切りなど）を探す
+		lastSeparatorLen := 0
 		lastSeparatorIndex := strings.LastIndex(segmentCandidate, ContentSeparator)
-		if lastSeparatorIndex == -1 {
+		if lastSeparatorIndex != -1 {
+			lastSeparatorLen = len(ContentSeparator)
+		} else {
 			// ContentSeparator が見つからない場合、一般的な改行(\n\n)を探す
 			lastSeparatorIndex = strings.LastIndex(segmentCandidate, "\n\n")
+			if lastSeparatorIndex != -1 {
+				lastSeparatorLen = len("\n\n")
+			}
 		}
 
 		if lastSeparatorIndex != -1 && lastSeparatorIndex > maxChars/2 {
 			// 分割位置を安全な区切り文字の直後に設定
-			splitIndex = lastSeparatorIndex + len(ContentSeparator)
+			splitIndex = lastSeparatorIndex + lastSeparatorLen
 		} else {
 			// 安全な区切りが見つからない場合は、そのまま最大文字数で切り、警告を出す
 			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。", maxChars)
-			splitIndex = maxChars
+			// splitIndex は maxChars のまま
 		}
 
 		segments = append(segments, string(current[:splitIndex]))
