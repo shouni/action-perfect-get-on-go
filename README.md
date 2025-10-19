@@ -1,4 +1,4 @@
-# 🤖 action perfect get On Go
+# 🤖 Action Perfect Get On Go
 
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -55,17 +55,17 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ## 🚀 使い方 (Usage)
 
-本ツールは、処理対象のURLを**コマンドライン引数**として受け取ります。
+本ツールは、処理対象のURLを\*\*コマンドライン引数（可変長）\*\*として受け取ります。これにより、柔軟に複数のURLを指定できます。
 
 ### 実行コマンド形式
 
 ```bash
-./bin/llm_cleaner [https://www.youtube.com/watch?v=KsZ6tROaVOQ](https://www.youtube.com/watch?v=KsZ6tROaVOQ) [https://www.youtube.com/watch?v=-s7TCuCpB5c](https://www.youtube.com/watch?v=-s7TCuCpB5c) [https://www.youtube.com/watch?v=ep9zgmN9BNA](https://www.youtube.com/watch?v=ep9zgmN9BNA) [https://en.wikipedia.org/wiki/4](https://en.wikipedia.org/wiki/4) [https://en.wikipedia.org/wiki/5](https://en.wikipedia.org/wiki/5) ...
+./bin/llm_cleaner [https://www.youtube.com/watch?v=KsZ6tROaVOQ](https://www.youtube.com/watch?v=KsZ6tROaVOQ) [https://www.youtube.com/watch?v=-s7TCuCpB5c](https://www.youtube.com/watch?v=-s7TCuCpB5c) [https://www.youtube.com/watch?v=ep9zgmN9BNA](https://www.youtube.com/watch?v=ep9zgmN9BNA) [https://en.wikipedia.org/wiki/4](https://en.wikipedia.org/wiki/4) ... [https://en.wikipedia.org/wiki/N](https://en.wikipedia.org/wiki/N)
 ```
 
-### 実行例
+**注意:** 処理を実行するには、少なくとも2つ以上のURLを指定する必要があります。
 
-少なくとも2つ以上のURLを指定してください。
+### 実行例
 
 ```bash
 ./bin/llm_cleaner \
@@ -77,7 +77,7 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ### 🗃️ 処理の流れ
 
-1.  上記4つのURLへのアクセスが**同時に**開始されます。
+1.  コマンドライン引数で渡された複数のURLへのアクセスが**同時に**開始されます。
 2.  `go-web-exact`により各ページの本文が抽出されます。
 3.  抽出された本文が一つに結合されます。
 4.  結合テキストが専用のプロンプトと共にLLMに送信されます。
