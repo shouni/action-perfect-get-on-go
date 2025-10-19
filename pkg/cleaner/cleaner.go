@@ -3,22 +3,26 @@ package cleaner
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"action-perfect-get-on-go/pkg/types"
-
 	gemini "github.com/shouni/go-ai-client/pkg/ai/gemini"
 )
 
 // ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
 const ContentSeparator = "\n\n--- DOCUMENT END ---\n\n"
 
+// MaxInputChars は、LLMに渡すテキストの最大許容文字数（バイト数ではありません）。
+// これは、APIのトークン制限（gemini-2.5-flashは200万トークン）に安全なマージンを設けた推定値です。
+// 安全のため、約10万トークン（40万文字）を上限とします。
+const MaxInputChars = 400000
+
 // CombineContents は、成功した抽出結果の本文を効率的に結合します。
 // 各コンテンツの前には、ソースURL情報が付加されます。
 func CombineContents(results []types.URLResult) string {
 	var builder strings.Builder
 
-	// 各コンテンツを結合し、明確な区切り文字を入れる
 	for i, res := range results {
 		// URLを追記することで、LLMがどのソースのテキストであるかを識別できるようにする
 		builder.WriteString(fmt.Sprintf("--- SOURCE URL %d: %s ---\n", i+1, res.URL))
@@ -35,17 +39,46 @@ func CombineContents(results []types.URLResult) string {
 
 // CleanAndStructureText は結合されたテキストをLLMで処理し、
 // 重複排除と論理的な構造化を実行したクリーンなテキストを返します。
-func CleanAndStructureText(ctx context.Context, combinedText string) (string, error) {
-	// 1. LLMクライアントの初期化 (APIキーを環境変数から読み込むヘルパーを使用)
-	client, err := gemini.NewClientFromEnv(ctx)
-	if err != nil {
-		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました: %w", err)
+// api_key_override は、コマンドライン引数で渡されたAPIキーです。
+// 環境変数よりもこちらが優先されます。
+func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
+
+	// 1. LLM入力テキストのサイズ制限チェック (クリティカルな修正)
+	// rune (文字) ベースで長さを取得し、トークン超過によるAPIエラーを防ぐ
+	inputRunes := []rune(combinedText)
+	if len(inputRunes) > MaxInputChars {
+		log.Printf("⚠️ WARNING: 結合されたテキストが大きすぎます（%d文字 > 制限 %d文字）。安全のため、後方の情報を切り詰めます。", len(inputRunes), MaxInputChars)
+
+		// 警告メッセージを冒頭に追加
+		warningMsg := "【WARNING: 入力テキストが大きすぎたため、後方の情報を切り捨てました。】\n\n"
+
+		// 安全な長さで切り詰め
+		safeText := warningMsg + string(inputRunes[:MaxInputChars])
+		combinedText = safeText
 	}
 
-	// 2. LLMに渡すためのプロンプトを構築
+	// 2. LLMクライアントの初期化 (APIキーの柔軟性向上)
+	var client *gemini.Client
+	var err error
+
+	if apiKeyOverride != "" {
+		// CLIオプションでキーが渡された場合、それを優先して使用
+		client, err = gemini.NewClient(ctx, gemini.Config{APIKey: apiKeyOverride})
+	} else {
+		// CLIオプションがない場合、環境変数から読み込みを試みる
+		client, err = gemini.NewClientFromEnv(ctx)
+	}
+
+	if err != nil {
+		// APIキーがない、またはクライアント作成に失敗した場合
+		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキー（--api-keyまたは環境変数）が設定されているか確認してください: %w", err)
+	}
+
+	// 3. LLMに渡すためのプロンプトを構築
 	prompt := buildCleaningPrompt(combinedText)
 
-	// 3. LLM APIを呼び出し（モデル名は構造化処理に適したものを指定）
+	// 4. LLM APIを呼び出し
+	// モデル名は構造化処理に適したものを指定
 	response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 	if err != nil {
 		return "", fmt.Errorf("LLM APIの呼び出しに失敗しました: %w", err)
