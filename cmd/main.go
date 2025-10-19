@@ -62,13 +62,18 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// ParallelScraperの初期化 (エラーをチェック)
 	s, err := scraper.NewParallelScraper(scraperTimeout)
 	if err != nil {
+		// 行番号 67-69 の修正: エラーメッセージを簡潔化
 		return fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
 
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
-	// 1. 無条件遅延
+	// -----------------------------------------------------------
+	// ⭐ 1秒無条件遅延と失敗URLリトライロジック ⭐
+	// -----------------------------------------------------------
+
+	// 1. 無条件遅延 (1秒)
 	log.Println("並列抽出が完了しました。サーバー負荷を考慮し、次の処理に進む前に1秒待機します。")
 	time.Sleep(1 * time.Second)
 
@@ -88,13 +93,15 @@ func runMain(cmd *cobra.Command, args []string) error {
 
 	// 3. 失敗URLがある場合、追加で5秒待機後に順次リトライ
 	if len(failedURLs) > 0 {
-		log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件あります。5秒待機後、順次リトライを開始します。", len(failedURLs))
+		// 行番号 84 の修正: 日本語表現を「ありました」に変更
+		log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
 		time.Sleep(5 * time.Second) // リトライ前の追加遅延
 
 		// リトライ用の非並列クライアントを初期化
 		retryScraperClient, err := scraper.NewClient(scraperTimeout)
 		if err != nil {
-			log.Printf("ERROR: リトライ用スクレイパーの初期化に失敗しました: %v", err)
+			// 行番号 89-91 の修正: WARNINGレベルに変更
+			log.Printf("WARNING: リトライ用スクレイパーの初期化に失敗しました: %v。リトライ処理は実行されません。", err)
 		} else {
 			log.Println("--- 1b. 失敗URLの順次リトライを開始 ---")
 
@@ -121,7 +128,8 @@ func runMain(cmd *cobra.Command, args []string) error {
 
 	// 成功URLがゼロの場合は終了
 	if len(successfulResults) == 0 {
-		return fmt.Errorf("致命的エラー: 最終的に処理可能なWebコンテンツがありませんでした。")
+		// 行番号 112 の修正: ユーザーフレンドリーなメッセージに変更
+		return fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
 	// --- 2. データ結合フェーズ (リトライ成功結果も含む) ---

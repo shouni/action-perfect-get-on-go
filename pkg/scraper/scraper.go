@@ -23,7 +23,6 @@ type Client struct {
 }
 
 // ParallelScraper は Scraper インターフェースを実装する並列処理構造体です。
-// Client へのポインタを保持することで、抽出ロジックを共有します。
 type ParallelScraper struct {
 	client *Client
 }
@@ -36,16 +35,16 @@ func NewClient(timeout time.Duration) (*Client, error) {
 	// 2. 抽出ロジックを管理する Extractor を初期化
 	extractor := webextractor.NewExtractor(httpClient)
 
-	// エラーは発生しない想定だが、統一的なインターフェースとして返す
+	// 行番号 44 の修正: エラーを返す意図をコメントで明確化
+	// 現在のhttpclientとwebextractorの実装ではエラーは発生しない想定だが、
+	// 将来的な変更に備え、統一的なインターフェースとしてerrorを返すようにしている。
 	return &Client{
 		extractor: extractor,
-	}, nil // nil エラーを返す
+	}, nil
 }
 
 // NewParallelScraper は ParallelScraper を初期化します。
-// エラーハンドリングのために、戻り値に error を追加します。
 func NewParallelScraper(timeout time.Duration) (*ParallelScraper, error) {
-	// 内部の基本クライアントを初期化
 	client, err := NewClient(timeout)
 	if err != nil {
 		return nil, err
@@ -56,7 +55,7 @@ func NewParallelScraper(timeout time.Duration) (*ParallelScraper, error) {
 	}, nil
 }
 
-// ScrapeInParallel は Scraper インターフェースのメソッドを実装します。（変更なし）
+// ScrapeInParallel は Scraper インターフェースのメソッドを実装します。
 func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult {
 	var wg sync.WaitGroup
 	resultsChan := make(chan types.URLResult, len(urls))
@@ -76,12 +75,11 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 			default:
 			}
 
-			// 並列処理では、ParallelScraperが持つ内部Clientのメソッドを呼び出す
 			res, err := s.client.ExtractContent(u, ctx)
 
 			resultsChan <- types.URLResult{
 				URL:     u,
-				Content: res, // resはstring
+				Content: res,
 				Error:   err,
 			}
 		}(url)
@@ -99,8 +97,6 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 }
 
 // ExtractContent は単一のURLからメインコンテンツを抽出します。
-// これは ParallelScraper の内部、および cmd/main.go の順次リトライで使用されます。
-// 引数の順序を合わせるため、Clientのメソッドとして定義します。
 func (c *Client) ExtractContent(url string, ctx context.Context) (string, error) {
 	// Extractor の FetchAndExtractText を呼び出し、抽出・整形ロジックをすべて委譲します。
 	content, hasBodyFound, err := c.extractor.FetchAndExtractText(url, ctx)
@@ -115,9 +111,3 @@ func (c *Client) ExtractContent(url string, ctx context.Context) (string, error)
 
 	return content, nil
 }
-
-// // 既存の extractContent ヘルパーを Client のメソッドとして再定義したため、元のものは削除または修正が必要です
-// func (s *ParallelScraper) extractContent(url string, ctx context.Context) (string, error) {
-//     // (この関数は不要になるか、上記の Client.ExtractContent を呼び出すように修正されます)
-//     return s.client.ExtractContent(url, ctx)
-// }
