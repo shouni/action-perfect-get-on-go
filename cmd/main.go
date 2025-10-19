@@ -71,12 +71,12 @@ func runMain(cmd *cobra.Command, args []string) error {
 	results := s.ScrapeInParallel(ctx, urls)
 
 	// -----------------------------------------------------------
-	// 1秒無条件遅延と結果の分類
+	// 2秒無条件遅延と結果の分類
 	// -----------------------------------------------------------
 
-	// 1. 無条件遅延 (1秒)
-	log.Println("並列抽出が完了しました。サーバー負荷を考慮し、次の処理に進む前に1秒待機します。")
-	time.Sleep(1 * time.Second)
+	// 1. 無条件遅延 (2秒)
+	log.Println("並列抽出が完了しました。サーバー負荷を考慮し、次の処理に進む前に2秒待機します。")
+	time.Sleep(2 * time.Second) // ⭐ ここを2秒に修正 ⭐
 
 	// 2. 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
@@ -147,7 +147,7 @@ func classifyResults(results []types.URLResult) (successfulResults []types.URLRe
 // processFailedURLs は失敗したURLに対して5秒待機後、1回だけ順次リトライを実行します。
 func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration) ([]types.URLResult, error) {
 	log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
-	time.Sleep(5 * time.Second) // リトライ前の追加遅延
+	time.Sleep(5 * time.Second) // リトライ前の追加遅延 (ここは変更なしで5秒維持)
 
 	// リトライ用の非並列クライアントを初期化
 	retryScraperClient, err := scraper.NewClient(scraperTimeout)
