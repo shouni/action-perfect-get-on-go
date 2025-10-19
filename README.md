@@ -3,7 +3,7 @@
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/action-perfect-get-on-go)](https://golang.org/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/action-perfect-get-on-go)](https://github.com/shouni/action-perfect-get-on-go/tags)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/shouni/action-perfect-get-on-go/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🌟 概要: 完璧な情報取得とAI構造化
 
