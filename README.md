@@ -1,5 +1,10 @@
 # 🤖 Action Perfect Get On Go
 
+[![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/action-perfect-get-on-go)](https://golang.org/)
+[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/action-perfect-get-on-go)](https://github.com/shouni/action-perfect-get-on-go/tags)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/shouni/action-perfect-get-on-go/blob/main/LICENSE)
+
 ## 🌟 概要: 完璧な情報取得とAI構造化
 
 **Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** の**マルチステップ処理**によって**情報欠落なく重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
