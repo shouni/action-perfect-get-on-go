@@ -9,21 +9,25 @@ import (
 
 	"action-perfect-get-on-go/pkg/cleaner"
 	"action-perfect-get-on-go/pkg/scraper"
+	"action-perfect-get-on-go/pkg/types" // ⭐ 修正点: 共有型をインポート
 
 	"github.com/spf13/cobra"
 )
 
-// URLResult は個々のURLの抽出結果を格納する構造体
-type URLResult struct {
-	URL     string
-	Content string // 抽出された本文
-	Error   error
+// コマンドラインオプションのグローバル変数
+var llmTimeout time.Duration
+var scraperTimeout time.Duration
+
+func init() {
+	// ⭐ 修正点: LLMタイムアウトをフラグで設定可能にする
+	rootCmd.PersistentFlags().DurationVarP(&llmTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
+	// ⭐ 修正点: スクレイパータイムアウトをフラグで設定可能にする
+	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 }
 
 // プログラムのエントリーポイント
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		// Cobraのエラーは既に表示されていることが多いが、確実に終了コードを返す
 		os.Exit(1)
 	}
 }
@@ -38,8 +42,8 @@ Action Perfect Get On Ready to Go
 複数のURLを並列でスクレイピングし、取得した本文をLLMで重複排除・構造化するツールです。
 [URL...]としてスペース区切りで複数のURLを引数に指定してください。
 `,
-	// 少なくとも2つ以上のURLを必須とする
-	Args: cobra.MinimumNArgs(2),
+	// ⭐ 修正点: 柔軟性を向上させるため、少なくとも1つ以上のURLを必須とする
+	Args: cobra.MinimumNArgs(1),
 	RunE: runMain,
 }
 
@@ -47,8 +51,8 @@ Action Perfect Get On Ready to Go
 func runMain(cmd *cobra.Command, args []string) error {
 	urls := args
 
-	// LLM処理は時間がかかる可能性があるため、長めのコンテキストを設定
-	ctx, cancel := context.WithTimeout(cmd.Context(), time.Minute*5)
+	// LLM処理のコンテキストタイムアウトをフラグ値で設定
+	ctx, cancel := context.WithTimeout(cmd.Context(), llmTimeout)
 	defer cancel()
 
 	log.Printf("🚀 Action Perfect Get On: %d個のURLの処理を開始します。", len(urls))
@@ -56,15 +60,20 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 1. 並列抽出フェーズ (Scraping) ---
 	log.Println("--- 1. Webコンテンツの並列抽出を開始 ---")
 
-	s := scraper.NewParallelScraper()
+	// ⭐ 修正点: Scraperの初期化時に、フラグ値のタイムアウトを渡す
+	s := scraper.NewParallelScraper(scraperTimeout)
+
 	results := s.ScrapeInParallel(ctx, urls)
 
-	// 処理結果の確認
+	// 処理結果の確認と成功結果のフィルタリング
+	var successResults []types.URLResult // ⭐ 修正点: 成功した結果のみを格納
 	var successCount int
+
 	for _, res := range results {
 		if res.Error != nil {
 			log.Printf("❌ ERROR: %s の抽出に失敗しました: %v", res.URL, res.Error)
 		} else {
+			successResults = append(successResults, res)
 			successCount++
 		}
 	}
@@ -76,8 +85,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 2. データ結合フェーズ ---
 	log.Println("--- 2. 抽出結果の結合 ---")
 
-	// cleanerパッケージの関数を呼び出す
-	combinedText := cleaner.CombineContents(results)
+	combinedText := cleaner.CombineContents(successResults)
 
 	log.Printf("結合されたテキストの長さ: %dバイト (成功: %d/%d URL)",
 		len(combinedText), successCount, len(urls))
@@ -85,7 +93,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 3. AIクリーンアップフェーズ (LLM) ---
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
 
-	// cleanerパッケージの関数を呼び出す
 	cleanedText, err := cleaner.CleanAndStructureText(ctx, combinedText)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)

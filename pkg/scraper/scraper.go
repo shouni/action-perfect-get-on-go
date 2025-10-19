@@ -1,22 +1,19 @@
+// pkg/scraper/scraper.go
+
 package scraper
 
 import (
 	"context"
 	"time"
 
+	"action-perfect-get-on-go/pkg/types"
+
 	httpclient "github.com/shouni/go-web-exact/pkg/httpclient"
 )
 
-// URLResult は個々のURLの抽出結果を格納する構造体
-type URLResult struct {
-	URL     string
-	Content string // 抽出された本文
-	Error   error
-}
-
 // Scraper はWebコンテンツの抽出機能を提供するインターフェースです。
 type Scraper interface {
-	ScrapeInParallel(ctx context.Context, urls []string) []URLResult
+	ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult
 }
 
 // ParallelScraper は Scraper インターフェースを実装する具体的な構造体です。
@@ -25,17 +22,16 @@ type ParallelScraper struct {
 }
 
 // NewParallelScraper は ParallelScraper を初期化します。
-func NewParallelScraper() *ParallelScraper {
-	// 堅牢性を確保するため、タイムアウトを設定 (15秒は仮)
+func NewParallelScraper(timeout time.Duration) *ParallelScraper {
 	return &ParallelScraper{
-		webClient: httpclient.New(time.Second * 15),
+		webClient: httpclient.New(timeout),
 	}
 }
 
 // ScrapeInParallel は Scraper インターフェースのメソッドを実装します。
-func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) []URLResult {
+func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult {
 	// TODO: 実装ロジック
 
 	// ビルドを通すためのスタブ処理
-	return []URLResult{}
+	return []types.URLResult{}
 }
