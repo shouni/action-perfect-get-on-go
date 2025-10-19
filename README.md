@@ -7,7 +7,8 @@
 
 **action-perfect-get-on-go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** によって**重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
 
-情報収集の「アクション」を「パーフェクト」に実行し、LLMへの入力データ準備を劇的に効率化します。
+### 🚨 サブ概要：Action Perfect Get On Ready to Go
+> **銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み**
 
 ### 🛠️ 主な機能
 
@@ -86,3 +87,4 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 ## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
+
