@@ -13,19 +13,41 @@ import (
 	gemini "github.com/shouni/go-ai-client/pkg/ai/gemini"
 )
 
-// ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
-const ContentSeparator = "\n\n--- DOCUMENT END ---\n\n"
+// ContentSeparator, DefaultSeparator, MaxSegmentChars の定義はそのまま
 
-// DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
-const DefaultSeparator = "\n\n"
+// ----------------------------------------------------------------ß
+// Cleaner 構造体とコンストラクタの導入
+// ----------------------------------------------------------------
 
-// MaxSegmentChars は、MapフェーズでLLMに一度に渡す安全な最大文字数。
-// トークン制限に十分なマージンを持たせた値です。
-const MaxSegmentChars = 400000
+// Cleaner はコンテンツのクリーンアップと要約を担当します。
+type Cleaner struct {
+	mapBuilder    *prompts.PromptBuilder
+	reduceBuilder *prompts.PromptBuilder
+}
 
-// CombineContents は、成功した抽出結果の本文を効率的に結合します。
-// 各コンテンツの前には、ソースURL情報が付加され、LLMが識別できるようにします。
-// 最後の文書でなければ明確な区切り文字を追加します。
+// NewCleaner は新しいCleanerインスタンスを作成し、PromptBuilderを一度だけ初期化します。
+func NewCleaner() (*Cleaner, error) {
+	// テンプレートパースはここで一度だけ行い、失敗した場合はエラーを返す
+	mapBuilder := prompts.NewMapPromptBuilder()
+	if err := mapBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("failed to initialize map prompt builder: %w", err)
+	}
+	reduceBuilder := prompts.NewReducePromptBuilder()
+	if err := reduceBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("failed to initialize reduce prompt builder: %w", err)
+	}
+
+	return &Cleaner{
+		mapBuilder:    mapBuilder,
+		reduceBuilder: reduceBuilder,
+	}, nil
+}
+
+// ----------------------------------------------------------------
+// 既存関数のリファクタリング
+// ----------------------------------------------------------------
+
+// CombineContents の実装は変更なし...
 func CombineContents(results []types.URLResult) string {
 	var builder strings.Builder
 
@@ -43,9 +65,8 @@ func CombineContents(results []types.URLResult) string {
 	return builder.String()
 }
 
-// CleanAndStructureText は、結合された巨大なテキストをセグメントに分割し、
-// 並列処理（MapReduceパターン）で最終的な構造化テキストを生成します。
-func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
+// CleanAndStructureText は、Cleanerメソッドとして再定義
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
@@ -58,7 +79,6 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	}
 
 	if err != nil {
-		// APIキーがない、またはクライアント作成に失敗した場合
 		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキー（--api-keyオプションまたは環境変数）が設定されているか確認してください: %w", err)
 	}
 
@@ -67,7 +87,8 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	log.Printf("テキストを %d 個のセグメントに分割しました。中間要約を開始します。", len(segments))
 
 	// 3. Mapフェーズの実行（各セグメントの並列処理）
-	intermediateSummaries, err := processSegmentsInParallel(ctx, client, segments)
+	// ⭐ 変更点: Cleanerのメソッドとして呼び出し
+	intermediateSummaries, err := c.processSegmentsInParallel(ctx, client, segments)
 	if err != nil {
 		return "", fmt.Errorf("セグメント処理（Mapフェーズ）に失敗しました: %w", err)
 	}
@@ -78,9 +99,9 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	reduceBuilder := prompts.NewReducePromptBuilder()
+	// ⭐ 変更点: フィールドのビルダー c.reduceBuilder を使用
 	reduceData := prompts.ReduceTemplateData{CombinedText: finalCombinedText}
-	finalPrompt, err := reduceBuilder.BuildReduce(reduceData)
+	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
 	if err != nil {
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
 	}
@@ -97,8 +118,7 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 // ヘルパー関数群
 // ----------------------------------------------------------------
 
-// segmentText は、結合されたテキストを、安全な最大文字数を超えないように分割します。
-// 段落の区切りを優先して分割し、文脈の欠落を最小限に抑えます。
+// segmentText の実装は変更なし...
 func segmentText(text string, maxChars int) []string {
 	var segments []string
 	current := []rune(text)
@@ -143,23 +163,25 @@ func segmentText(text string, maxChars int) []string {
 	return segments
 }
 
-// processSegmentsInParallel は、各セグメントをGoルーチンで並列にLLM処理にかけます（Mapフェーズ）。
-func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
+// processSegmentsInParallel は Cleanerのメソッドとして再定義
+func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
 	var wg sync.WaitGroup
 	resultsChan := make(chan struct {
 		summary string
 		err     error
 	}, len(segments))
 
-	mapBuilder := prompts.NewMapPromptBuilder()
+	// ⭐ 変更点: フィールドのビルダー c.mapBuilder を使用 (NewMapPromptBuilderの呼び出しを削除)
 
 	for i, segment := range segments {
 		wg.Add(1)
 
 		go func(index int, seg string) {
 			defer wg.Done()
+
+			// ⭐ 変更点: フィールドのビルダー c.mapBuilder を使用
 			mapData := prompts.MapTemplateData{SegmentText: seg}
-			prompt, err := mapBuilder.BuildMap(mapData)
+			prompt, err := c.mapBuilder.BuildMap(mapData)
 			if err != nil {
 				log.Printf("❌ ERROR: セグメント %d のプロンプト生成に失敗しました: %v", index+1, err)
 				resultsChan <- struct {
