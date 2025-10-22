@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -19,11 +20,14 @@ import (
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
+var urlFile string
 
 func init() {
 	rootCmd.PersistentFlags().DurationVarP(&llmTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
 	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	rootCmd.PersistentFlags().StringVarP(&llmAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
+	// ⭐ 修正点: urlFile フラグの登録はこれでOK
+	rootCmd.PersistentFlags().StringVarP(&urlFile, "url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
 }
 
 // プログラムのエントリーポイント
@@ -34,22 +38,52 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "action-perfect-get-on-go [URL...]",
+	// ⭐ 修正点: Useの記述から [URL...] を削除。Argsのチェックを削除するため。
+	Use:   "action-perfect-get-on-go",
 	Short: "複数のURLを並列で取得し、LLMでクリーンアップします。",
 	Long: `
 Action Perfect Get On Ready to Go
 銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み
 
 複数のURLを並列でスクレイピングし、取得した本文をLLMで重複排除・構造化するツールです。
-[URL...]としてスペース区切りで複数のURLを引数に指定してください。
+実行には、-fまたは--url-fileオプションでURLリストファイルを指定してください。
 `,
-	Args: cobra.MinimumNArgs(1),
+	// ⭐ 修正点: ファイル入力に切り替えるため、引数の最小個数チェックを削除
+	// Args: cobra.MinimumNArgs(1),
 	RunE: runMain,
 }
 
 // runMain は CLIのメインロジックを実行します。
 func runMain(cmd *cobra.Command, args []string) error {
-	urls := args
+	var urls []string
+	var err error
+
+	// ⭐ 修正点: Cleanerの初期化をここ（runMainの冒頭）に移動し、cを定義する
+	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
+	c, err := cleaner.NewCleaner()
+	if err != nil {
+		// NewCleanerが失敗した場合（主にPrompt Builderのテンプレートパースエラー）、ここで終了
+		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+	}
+
+	// URL入力ロジック
+	if urlFile != "" {
+		urls, err = readURLsFromFile(urlFile)
+		if err != nil {
+			return fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
+		}
+	} else if len(args) > 0 {
+		// 互換性のために、ファイルフラグがない場合はコマンド引数もチェックする（推奨はしないが、一時的な対応として残す）
+		urls = args
+		log.Println("⚠️ WARNING: URLが引数として渡されました。将来的に -f/--url-file フラグの使用が必須になります。")
+	} else {
+		// ファイルも引数も提供されていない場合はエラー
+		return fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定するか、URLを引数に渡してください。")
+	}
+
+	if len(urls) == 0 {
+		return fmt.Errorf("URLリストファイルに有効なURLが一件も含まれていませんでした。")
+	}
 
 	// LLM処理のコンテキストタイムアウトをフラグ値で設定
 	ctx, cancel := context.WithTimeout(cmd.Context(), llmTimeout)
@@ -113,7 +147,8 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 3. AIクリーンアップフェーズ (LLM) ---
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
 
-	cleanedText, err := cleaner.CleanAndStructureText(ctx, combinedText, llmAPIKey)
+	// ⭐ 修正済み: c.CleanAndStructureText(ctx, combinedText, llmAPIKey) が c のスコープ内で実行される
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, llmAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
@@ -131,6 +166,34 @@ func runMain(cmd *cobra.Command, args []string) error {
 // ----------------------------------------------------------------
 // ヘルパー関数
 // ----------------------------------------------------------------
+
+// readURLsFromFile は指定されたファイルからURLを読み込み、スライスとして返します。
+// 空行とコメント行（#から始まる）はスキップします。
+func readURLsFromFile(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var urls []string
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// 空行とコメント行（#で始まる）をスキップ
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		urls = append(urls, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("ファイルの読み取り中にエラーが発生しました: %w", err)
+	}
+
+	return urls, nil
+}
 
 // classifyResults は並列抽出の結果を成功と失敗に分類します。
 func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
