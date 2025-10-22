@@ -179,7 +179,6 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		go func(index int, seg string) {
 			defer wg.Done()
 
-			// ⭐ 変更点: フィールドのビルダー c.mapBuilder を使用
 			mapData := prompts.MapTemplateData{SegmentText: seg}
 			prompt, err := c.mapBuilder.BuildMap(mapData)
 			if err != nil {
