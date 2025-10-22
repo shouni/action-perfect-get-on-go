@@ -13,7 +13,15 @@ import (
 	gemini "github.com/shouni/go-ai-client/pkg/ai/gemini"
 )
 
-// ContentSeparator, DefaultSeparator, MaxSegmentChars の定義はそのまま
+// ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
+const ContentSeparator = "\n\n--- DOCUMENT END ---\n\n"
+
+// DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
+const DefaultSeparator = "\n\n"
+
+// MaxSegmentChars は、MapフェーズでLLMに一度に渡す安全な最大文字数。
+// トークン制限に十分なマージンを持たせた値です。
+const MaxSegmentChars = 400000
 
 // ----------------------------------------------------------------ß
 // Cleaner 構造体とコンストラクタの導入
