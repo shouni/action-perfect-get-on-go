@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"action-perfect-get-on-go/pkg/types"
+	"action-perfect-get-on-go/prompts"
 
 	gemini "github.com/shouni/go-ai-client/pkg/ai/gemini"
 )
@@ -22,8 +23,39 @@ const DefaultSeparator = "\n\n"
 // トークン制限に十分なマージンを持たせた値です。
 const MaxSegmentChars = 400000
 
+// ----------------------------------------------------------------
+// Cleaner 構造体とコンストラクタの導入
+// ----------------------------------------------------------------
+
+// Cleaner はコンテンツのクリーンアップと要約を担当します。
+type Cleaner struct {
+	mapBuilder    *prompts.PromptBuilder
+	reduceBuilder *prompts.PromptBuilder
+}
+
+// NewCleaner は新しいCleanerインスタンスを作成し、PromptBuilderを一度だけ初期化します。
+func NewCleaner() (*Cleaner, error) {
+	// テンプレートパースはここで一度だけ行い、失敗した場合はエラーを返す
+	mapBuilder := prompts.NewMapPromptBuilder()
+	if err := mapBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("failed to initialize map prompt builder: %w", err)
+	}
+	reduceBuilder := prompts.NewReducePromptBuilder()
+	if err := reduceBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("failed to initialize reduce prompt builder: %w", err)
+	}
+
+	return &Cleaner{
+		mapBuilder:    mapBuilder,
+		reduceBuilder: reduceBuilder,
+	}, nil
+}
+
+// ----------------------------------------------------------------
+// 既存関数のリファクタリング
+// ----------------------------------------------------------------
+
 // CombineContents は、成功した抽出結果の本文を効率的に結合します。
-// ⭐ 修正: 簡潔にまとめたコメントを再度追加
 // 各コンテンツの前には、ソースURL情報が付加され、LLMが識別できるようにします。
 // 最後の文書でなければ明確な区切り文字を追加します。
 func CombineContents(results []types.URLResult) string {
@@ -43,9 +75,8 @@ func CombineContents(results []types.URLResult) string {
 	return builder.String()
 }
 
-// CleanAndStructureText は、結合された巨大なテキストをセグメントに分割し、
-// 並列処理（MapReduceパターン）で最終的な構造化テキストを生成します。
-func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
+// CleanAndStructureText は、Cleanerメソッドとして再定義
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
@@ -58,7 +89,6 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	}
 
 	if err != nil {
-		// APIキーがない、またはクライアント作成に失敗した場合
 		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキー（--api-keyオプションまたは環境変数）が設定されているか確認してください: %w", err)
 	}
 
@@ -67,7 +97,7 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	log.Printf("テキストを %d 個のセグメントに分割しました。中間要約を開始します。", len(segments))
 
 	// 3. Mapフェーズの実行（各セグメントの並列処理）
-	intermediateSummaries, err := processSegmentsInParallel(ctx, client, segments)
+	intermediateSummaries, err := c.processSegmentsInParallel(ctx, client, segments)
 	if err != nil {
 		return "", fmt.Errorf("セグメント処理（Mapフェーズ）に失敗しました: %w", err)
 	}
@@ -78,7 +108,12 @@ func CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverr
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	finalPrompt := buildFinalReducePrompt(finalCombinedText)
+	reduceData := prompts.ReduceTemplateData{CombinedText: finalCombinedText}
+	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
+	if err != nil {
+		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
+	}
+
 	finalResponse, err := client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
 	if err != nil {
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
@@ -137,8 +172,8 @@ func segmentText(text string, maxChars int) []string {
 	return segments
 }
 
-// processSegmentsInParallel は、各セグメントをGoルーチンで並列にLLM処理にかけます（Mapフェーズ）。
-func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
+// processSegmentsInParallel は Cleanerのメソッドとして再定義
+func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
 	var wg sync.WaitGroup
 	resultsChan := make(chan struct {
 		summary string
@@ -151,7 +186,17 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 		go func(index int, seg string) {
 			defer wg.Done()
 
-			prompt := buildSegmentMapPrompt(seg)
+			mapData := prompts.MapTemplateData{SegmentText: seg}
+			prompt, err := c.mapBuilder.BuildMap(mapData)
+			if err != nil {
+				log.Printf("❌ ERROR: セグメント %d のプロンプト生成に失敗しました: %v", index+1, err)
+				resultsChan <- struct {
+					summary string
+					err     error
+				}{summary: "", err: fmt.Errorf("セグメント %d プロンプト生成失敗: %w", index+1, err)}
+				return
+			}
+
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
@@ -182,39 +227,4 @@ func processSegmentsInParallel(ctx context.Context, client *gemini.Client, segme
 	}
 
 	return summaries, nil
-}
-
-// buildSegmentMapPrompt は、個々のセグメントを要約するためのプロンプトを生成します。
-// ⭐ 修正: プロンプトを日本語に戻す
-func buildSegmentMapPrompt(segmentText string) string {
-	var sb strings.Builder
-	sb.WriteString("以下のテキストセグメントに含まれる情報をMarkdown形式で要約・クリーンアップし、冗長な表現を排除してください。\n")
-	sb.WriteString("このセグメント内の重複情報をすべて削除してください。\n")
-	sb.WriteString("【注意】これは中間処理です。すべての情報が保持されるように注意し、後の全体的な構造化を容易にするための論理的な見出しを付けてください。\n\n")
-	sb.WriteString("--- 入力セグメント ---\n")
-	sb.WriteString(segmentText)
-	sb.WriteString("\n------------------------\n\n")
-	sb.WriteString("✅ クリーンアップされたMarkdownテキストを出力してください:")
-
-	return sb.String()
-}
-
-// buildFinalReducePrompt は、すべての中間要約を統合するためのプロンプトを生成します。
-// ⭐ 修正: プロンプトを日本語に戻す
-func buildFinalReducePrompt(finalCombinedText string) string {
-	var sb strings.Builder
-	sb.WriteString("以下のテキストは、複数のウェブページから抽出された情報をセグメントごとに処理した中間要約の集合体です。\n")
-	sb.WriteString("あなたのタスクは、これらの情報を**完璧に統合**し、**最終的な構造化文書**を作成することです。\n\n")
-	sb.WriteString("--- 最終処理指示 ---\n")
-	sb.WriteString("1. **最終的な重複排除**: 中間要約間に残っている重複情報を識別し、最も完全な情報のみを残して、完全に統合してください。\n")
-	sb.WriteString("2. **論理的な構造化**: 全体を一つのトピックとして再構成し、最も論理的で分かりやすい階層構造（Markdownヘッダー）にしてください。\n")
-	sb.WriteString("3. **ノイズ除去**: 中間処理時に残った不要なメッセージやノイズはすべて削除してください。\n")
-	sb.WriteString("4. **出力形式**: 出力は、Markdown形式のクリーンなテキストのみとし、追加の説明や感想は一切含めないでください。\n")
-	sb.WriteString("----------------\n\n")
-	sb.WriteString("--- 中間要約結合テキスト ---\n")
-	sb.WriteString(finalCombinedText)
-	sb.WriteString("\n------------------------\n\n")
-	sb.WriteString("✅ 最終的な構造化文書を出力してください:")
-
-	return sb.String()
 }
