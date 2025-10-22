@@ -23,7 +23,7 @@ const DefaultSeparator = "\n\n"
 // トークン制限に十分なマージンを持たせた値です。
 const MaxSegmentChars = 400000
 
-// ----------------------------------------------------------------ß
+// ----------------------------------------------------------------
 // Cleaner 構造体とコンストラクタの導入
 // ----------------------------------------------------------------
 
@@ -55,7 +55,9 @@ func NewCleaner() (*Cleaner, error) {
 // 既存関数のリファクタリング
 // ----------------------------------------------------------------
 
-// CombineContents の実装は変更なし...
+// CombineContents は、成功した抽出結果の本文を効率的に結合します。
+// 各コンテンツの前には、ソースURL情報が付加され、LLMが識別できるようにします。
+// 最後の文書でなければ明確な区切り文字を追加します。
 func CombineContents(results []types.URLResult) string {
 	var builder strings.Builder
 
@@ -95,7 +97,6 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	log.Printf("テキストを %d 個のセグメントに分割しました。中間要約を開始します。", len(segments))
 
 	// 3. Mapフェーズの実行（各セグメントの並列処理）
-	// ⭐ 変更点: Cleanerのメソッドとして呼び出し
 	intermediateSummaries, err := c.processSegmentsInParallel(ctx, client, segments)
 	if err != nil {
 		return "", fmt.Errorf("セグメント処理（Mapフェーズ）に失敗しました: %w", err)
@@ -107,7 +108,6 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	// ⭐ 変更点: フィールドのビルダー c.reduceBuilder を使用
 	reduceData := prompts.ReduceTemplateData{CombinedText: finalCombinedText}
 	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
 	if err != nil {
@@ -126,7 +126,8 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 // ヘルパー関数群
 // ----------------------------------------------------------------
 
-// segmentText の実装は変更なし...
+// segmentText は、結合されたテキストを、安全な最大文字数を超えないように分割します。
+// 段落の区切りを優先して分割し、文脈の欠落を最小限に抑えます。
 func segmentText(text string, maxChars int) []string {
 	var segments []string
 	current := []rune(text)
@@ -178,8 +179,6 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		summary string
 		err     error
 	}, len(segments))
-
-	// ⭐ 変更点: フィールドのビルダー c.mapBuilder を使用 (NewMapPromptBuilderの呼び出しを削除)
 
 	for i, segment := range segments {
 		wg.Add(1)
