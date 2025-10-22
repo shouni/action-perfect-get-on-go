@@ -73,7 +73,7 @@ func (b *PromptBuilder) BuildMap(data MapTemplateData) (string, error) {
 
 	// 必須項目チェック: SegmentText が空だとMap処理の意図が失われるため
 	if data.SegmentText == "" {
-		return "", fmt.Errorf("SegmentText cannot be empty for Map prompt")
+		return "", fmt.Errorf("Mapプロンプト実行失敗: SegmentTextが空です (template: %s)", b.tmpl.Name())
 	}
 
 	return sb.String(), nil
@@ -93,7 +93,7 @@ func (b *PromptBuilder) BuildReduce(data ReduceTemplateData) (string, error) {
 
 	// 必須項目チェック: CombinedText が空だとReduce処理の意図が失われるため
 	if data.CombinedText == "" {
-		return "", fmt.Errorf("CombinedText cannot be empty for Reduce prompt")
+		return "", fmt.Errorf("Reduceプロンプト実行失敗: CombinedTextが空です (template: %s)", b.tmpl.Name())
 	}
 
 	return sb.String(), nil
