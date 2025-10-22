@@ -1,7 +1,7 @@
 # 🤖 Action Perfect Get On Go
 
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/action-perfect-get-on-go)](https://golang.org/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/prototypus-ai-doc-go)](https://golang.org/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/action-perfect-get-on-go)](https://github.com/shouni/action-perfect-get-on-go/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -10,6 +10,8 @@
 **Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** の**マルチステップ処理**によって**情報欠落なく重複排除**および**論理的に構造化**する、堅牢なコマンドラインツールです。
 
 このツールは、初期の並列処理での負荷や一時的なネットワークエラーに耐えるための**堅牢なリトライ・遅延メカニズム**を備えています。
+
+-----
 
 ## 🛠️ 主な機能と堅牢性
 
@@ -22,6 +24,11 @@
     * 中間要約を統合し、**最終的な重複排除と論理構造化**（Reduce）を実行することで、大規模な情報でも情報の欠落を防ぎ、高品質な結果を保証します。
 3.  **AI駆動のデータクリーンアップと構造化**: 結合されたテキストから重複コンテンツやノイズ（フッター、ナビゲーションなど）を排除し、情報構造を再構築します。処理指示は**日本語**で行われます。（内部で `go-ai-client` を利用）
 4.  **柔軟な設定**: 各フェーズでタイムアウトを設定可能にし、LLM APIキーを環境変数またはCLIオプションで柔軟に設定できます。
+5.  **内部設計の最適化**:
+    * プロンプト定義を外部ファイル（`.md`）に分離し、Goの`embed`パッケージでバイナリに組み込むことで、デプロイの堅牢性を確保。
+    * LLMプロンプトの生成に**ビルダーパターン**を採用し、テンプレートのパースコストを削減するため**再利用可能なインスタンス**として管理しています。
+
+-----
 
 ## ✨ 技術スタック
 
@@ -31,12 +38,14 @@
 | **CLI** | **Cobra** | コマンドライン引数とオプションの解析に使用します。 |
 | **Web抽出** | **[`github.com/shouni/go-web-exact`](https://github.com/shouni/go-web-exact)** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
 | **AI通信** | **[`github.com/shouni/go-ai-client`](https://github.com/shouni/go-ai-client)** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
+| **プロンプト** | **`text/template`, `embed`** | プロンプトを外部ファイル化し、**テンプレートパースのコストを抑えた**効率的なプロンプト生成ロジックを実現します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセスを同時に高速で実行します。 |
 
+-----
 
 ## 🛠️ 事前準備と設定
 
-### 1. ビルド
+### 1\. ビルド
 
 ```bash
 # リポジトリをクローン
@@ -70,28 +79,39 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ## 🚀 使い方 (Usage)
 
-本ツールは、処理対象のURLを**コマンドライン引数**として受け取ります。
+本ツールは、処理対象のURLを記載した**ファイル**を読み込む形式に変更します。
 
 ### 実行コマンド形式とオプション
 
 | オプション | フラグ | 説明 | デフォルト値 |
 | :--- | :--- | :--- | :--- |
 | `--api-key` | `-k` | **Gemini APIキー**を直接指定します（推奨）。 | なし |
+| `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ファイル内ではURLを改行区切りで記述します。 | なし (必須) |
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
 | `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。**大量のURLを処理する場合、30秒程度に延長することを推奨します。** | 15s (15秒) |
 
-```bash
-# 最小実行形式 (環境変数にAPIキーが設定されている場合)
-./bin/llm_cleaner [https://example.com/page-a](https://example.com/page-a) [https://example.com/page-b](https://example.com/page-b) ...
+### 1\. URLファイル (`urls.txt` の例) の作成
 
-# 推奨実行形式 (APIキーとカスタムタイムアウトを指定)
-./bin/llm_cleaner -k "YOUR_API_KEY" -s 30s -t 3m \
-    [https://example.com/page-a](https://example.com/page-a) \
-    [https://example.com/page-b](https://example.com/page-b) \
-    [https://example.com/page-c](https://example.com/page-c)
+ファイル内に、1行に1つずつ処理したいURLを記述します。
+
+```text
+# ファイル名: urls.txt
+https://example.com/page-a
+https://example.com/page-b
+https://example.com/page-c/specification
 ```
 
-**注意**: 処理を実行するには、**少なくとも1つ以上のURL**を指定する必要があります。
+### 2\. 実行コマンド形式 (修正後)
+
+```bash
+# 最小実行形式 (環境変数にAPIキーが設定されている場合)
+./bin/llm_cleaner -f ./urls.txt
+
+# 推奨実行形式 (APIキーとカスタムタイムアウトを指定)
+./bin/llm_cleaner -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m
+```
+
+**注意**: 処理を実行するには、**`--url-file` または `-f` フラグを使用して有効なファイルパス**を指定する必要があります。
 
 ### 🗃️ 処理の流れ
 
@@ -106,6 +126,5 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 -----
 
 ## 📜 ライセンス (License)
-
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
