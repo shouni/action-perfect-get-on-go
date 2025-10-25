@@ -4,6 +4,6 @@ https://github.com/shouni/git-gemini-reviewer-go
 https://github.com/shouni/go-ai-client
 https://github.com/shouni/go-light-api
 https://github.com/shouni/go-web-exact
-https://github.com/shouni/prototypus-ai-doc-go
-https://github.com/shouni/prototypus-ai
 https://github.com/shouni/prompter-live-go
+https://github.com/shouni/prototypus-ai
+https://github.com/shouni/prototypus-ai-doc-go
