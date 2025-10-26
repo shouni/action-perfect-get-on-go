@@ -36,8 +36,8 @@
 | :--- | :--- | :--- |
 | **言語** | **Go (Golang)** | ツールの開発言語。並列処理と堅牢な実行環境を提供します。 |
 | **CLI** | **Cobra** | コマンドライン引数とオプションの解析に使用します。 |
-| **Web抽出** | **[`github.com/shouni/go-web-exact`](https://www.google.com/search?q=%5Bhttps://github.com/shouni/go-web-exact%5D\(https://github.com/shouni/go-web-exact\))** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
-| **AI通信** | **[`github.com/shouni/go-ai-client`](https://www.google.com/search?q=%5Bhttps://github.com/shouni/go-ai-client%5D\(https://github.com/shouni/go-ai-client\))** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
+| **Web抽出** | **[`github.com/shouni/go-web-exact`](https://github.com/shouni/go-web-exact)** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
+| **AI通信** | **[`github.com/shouni/go-ai-client`](https://github.com/shouni/go-ai-client)** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
 | **プロンプト** | **`text/template`, `embed`** | プロンプトを外部ファイル化し、**テンプレートパースのコストを抑えた**効率的なプロンプト生成ロジックを実現します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセスを同時に高速で実行します。 |
 
@@ -56,7 +56,6 @@ cd action-perfect-get-on-go
 go mod tidy
 
 # 実行ファイルを bin/ ディレクトリに生成
-# Goバージョンは 1.25 以上を推奨
 go build -o bin/llm_cleaner ./cmd
 ```
 
@@ -85,11 +84,11 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 ### 実行コマンド形式とオプション
 
 | オプション | フラグ | 説明 | デフォルト値 |
-| :--- | :--- | :--- |:---|
+| :--- | :--- | :--- | :--- |
 | `--api-key` | `-k` | **Gemini APIキー**を直接指定します（推奨）。 | なし |
-| `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ファイル内ではURLを改行区切りで記述します。 **(必須)** | なし        |
+| `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ファイル内ではURLを改行区切りで記述します。 | なし (必須) |
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
-| `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 30s (30秒) |
+| `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。**大量のURLを処理する場合、30秒程度に延長することを推奨します。** | 15s (15秒) |
 
 ### 1\. URLファイル (`urls.txt` の例) の作成
 
