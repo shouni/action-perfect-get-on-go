@@ -79,7 +79,7 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
 ## 🚀 使い方 (Usage)
 
-本ツールは、処理対象のURLを記載した**ファイル**を読み込む形式に変更します。
+本ツールは、処理対象のURLを記載した**ファイル**を読み込む形式のみをサポートします。
 
 ### 実行コマンド形式とオプション
 
@@ -101,7 +101,9 @@ https://example.com/page-b
 https://example.com/page-c/specification
 ```
 
-### 2\. 実行コマンド形式 (修正後)
+### 2\. 実行コマンド形式
+
+処理を実行するには、**必ず** `--url-file` または `-f` フラグを使用して有効なファイルパスを指定する必要があります。URLを直接引数として渡す形式はサポートされていません。
 
 ```bash
 # 最小実行形式 (環境変数にAPIキーが設定されている場合)
@@ -110,8 +112,6 @@ https://example.com/page-c/specification
 # 推奨実行形式 (APIキーとカスタムタイムアウトを指定)
 ./bin/llm_cleaner -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m
 ```
-
-**注意**: 処理を実行するには、**`--url-file` または `-f` フラグを使用して有効なファイルパス**を指定する必要があります。
 
 ### 🗃️ 処理の流れ
 
@@ -128,3 +128,4 @@ https://example.com/page-c/specification
 ## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
+
