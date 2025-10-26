@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"action-perfect-get-on-go/pkg/cleaner"
-	"action-perfect-get-on-go/pkg/scraper"
-	"action-perfect-get-on-go/pkg/types"
+	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
+	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
+	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 
 	"github.com/spf13/cobra"
 )

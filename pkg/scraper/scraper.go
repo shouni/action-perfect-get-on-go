@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"action-perfect-get-on-go/pkg/types"
+	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 
 	"github.com/shouni/go-web-exact/pkg/httpclient"
 	webextractor "github.com/shouni/go-web-exact/pkg/web"
