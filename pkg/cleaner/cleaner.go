@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"action-perfect-get-on-go/pkg/types"
-	"action-perfect-get-on-go/prompts"
+	"github.com/shouni/action-perfect-get-on-go/pkg/types"
+	"github.com/shouni/action-perfect-get-on-go/prompts"
 
 	gemini "github.com/shouni/go-ai-client/pkg/ai/gemini"
 )
