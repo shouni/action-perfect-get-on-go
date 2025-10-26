@@ -1,6 +1,6 @@
 module action-perfect-get-on-go
 
-go 1.25
+go 1.22
 
 require (
 	github.com/shouni/go-ai-client v1.0.5
