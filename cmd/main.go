@@ -26,7 +26,6 @@ func init() {
 	rootCmd.PersistentFlags().DurationVarP(&llmTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
 	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	rootCmd.PersistentFlags().StringVarP(&llmAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
-	// ⭐ 修正点: urlFile フラグの登録はこれでOK
 	rootCmd.PersistentFlags().StringVarP(&urlFile, "url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
 }
 
@@ -38,18 +37,11 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	// ⭐ 修正点: Useの記述から [URL...] を削除。Argsのチェックを削除するため。
 	Use:   "action-perfect-get-on-go",
 	Short: "複数のURLを並列で取得し、LLMでクリーンアップします。",
 	Long: `
-Action Perfect Get On Ready to Go
-銀河の果てまで 追いかけてゆく 魂の血潮で アクセル踏み込み
-
-複数のURLを並列でスクレイピングし、取得した本文をLLMで重複排除・構造化するツールです。
 実行には、-fまたは--url-fileオプションでURLリストファイルを指定してください。
 `,
-	// ⭐ 修正点: ファイル入力に切り替えるため、引数の最小個数チェックを削除
-	// Args: cobra.MinimumNArgs(1),
 	RunE: runMain,
 }
 
@@ -58,7 +50,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 	var urls []string
 	var err error
 
-	// ⭐ 修正点: Cleanerの初期化をここ（runMainの冒頭）に移動し、cを定義する
 	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
 	c, err := cleaner.NewCleaner()
 	if err != nil {
@@ -72,13 +63,8 @@ func runMain(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
 		}
-	} else if len(args) > 0 {
-		// 互換性のために、ファイルフラグがない場合はコマンド引数もチェックする（推奨はしないが、一時的な対応として残す）
-		urls = args
-		log.Println("⚠️ WARNING: URLが引数として渡されました。将来的に -f/--url-file フラグの使用が必須になります。")
 	} else {
-		// ファイルも引数も提供されていない場合はエラー
-		return fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定するか、URLを引数に渡してください。")
+		return fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
 	}
 
 	if len(urls) == 0 {
@@ -147,7 +133,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// --- 3. AIクリーンアップフェーズ (LLM) ---
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
 
-	// ⭐ 修正済み: c.CleanAndStructureText(ctx, combinedText, llmAPIKey) が c のスコープ内で実行される
 	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, llmAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
