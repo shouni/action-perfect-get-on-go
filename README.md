@@ -86,9 +86,9 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 | オプション | フラグ | 説明 | デフォルト値 |
 | :--- | :--- | :--- | :--- |
 | `--api-key` | `-k` | **Gemini APIキー**を直接指定します（推奨）。 | なし |
-| `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ファイル内ではURLを改行区切りで記述します。 | なし (必須) |
+| `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ファイル内ではURLを改行区切りで記述します。 **(必須)** | なし |
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
-| `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。**大量のURLを処理する場合、30秒程度に延長することを推奨します。** | 15s (15秒) |
+| `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
 
 ### 1\. URLファイル (`urls.txt` の例) の作成
 
@@ -128,4 +128,3 @@ https://example.com/page-c/specification
 ## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
