@@ -1,4 +1,5 @@
 https://github.com/shouni/action-perfect-get-on-go
+https://github.com/shouni/action-rag-gateway-go
 https://github.com/shouni/git-gemini-clicker
 https://github.com/shouni/git-gemini-reviewer-go
 https://github.com/shouni/go-ai-client
