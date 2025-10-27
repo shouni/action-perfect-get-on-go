@@ -24,7 +24,7 @@ var scraperTimeout time.Duration
 var urlFile string
 
 // cmdOptionsはCLIオプションの値を集約するための構造体です。
-// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。（依存性注入の準備）
+// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。（コメント修正反映）
 type cmdOptions struct {
 	LLMAPIKey      string
 	LLMTimeout     time.Duration
@@ -57,7 +57,7 @@ var rootCmd = &cobra.Command{
 
 // runMainはCLIのメインロジックを実行します。処理ステップをオーケストレーションします。
 func runMain(cmd *cobra.Command, args []string) error {
-	// CLIオプションを構造体に集約し、依存性を明示的にする
+	// CLIオプションを構造体に集約
 	opts := cmdOptions{
 		LLMAPIKey:      llmAPIKey,
 		LLMTimeout:     llmTimeout,
@@ -72,20 +72,22 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// 1. URLの読み込みとバリデーション
 	urls, err := generateURLs(opts.URLFile)
 	if err != nil {
-		return err
+		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		return fmt.Errorf("URL生成フェーズでエラーが発生しました: %w", err)
 	}
-	// ログフォーマットを標準化 (指摘事項反映)
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
 	// 2. Webコンテンツの取得とリトライ
 	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout)
 	if err != nil {
-		return err // 処理可能なコンテンツがゼロの場合のエラー
+		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		return fmt.Errorf("コンテンツ取得フェーズでエラーが発生しました: %w", err)
 	}
 
 	// 3. AIクリーンアップと出力
 	if err := generateCleanedOutput(ctx, successfulResults, opts.LLMAPIKey); err != nil {
-		return err
+		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		return fmt.Errorf("AIクリーンアップフェーズでエラーが発生しました: %w", err)
 	}
 
 	return nil
@@ -114,13 +116,13 @@ func generateURLs(filePath string) ([]string, error) {
 
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
-	// ログフォーマットを標準化 (指摘事項反映)
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
-	initialURLCount := len(urls)
 
 	// ParallelScraperの初期化
 	s, err := scraper.NewParallelScraper(timeout)
 	if err != nil {
+		// エラーログ出力の追加 (指摘事項反映)
+		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
 		return nil, fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
 
@@ -134,7 +136,7 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 
 	// 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
-	initialSuccessfulCount := len(successfulResults)
+	initialSuccessfulCount := len(successfulResults) // 初期成功数は len(successfulResults) で保持
 
 	// 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
@@ -151,9 +153,9 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
-	// ログ出力
+	// ログ出力 (initialURLCountの代わりに len(urls) を使用し冗長性を排除)
 	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
-		len(successfulResults), initialURLCount, initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
+		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
 
 	return successfulResults, nil
 }
@@ -170,13 +172,11 @@ func generateCleanedOutput(ctx context.Context, successfulResults []types.URLRes
 	}
 
 	// データ結合フェーズ
-	// ログフォーマットを標準化 (指摘事項反映)
 	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
 	combinedText := cleaner.CombineContents(successfulResults)
 	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
 
 	// AIクリーンアップフェーズ (LLM)
-	// ログフォーマットを標準化 (指摘事項反映)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, apiKey)
 	if err != nil {
