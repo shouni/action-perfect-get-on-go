@@ -16,6 +16,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ----------------------------------------------------------------
+// 定数定義 (マジックナンバーの排除)
+// ----------------------------------------------------------------
+
+const (
+	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
+	initialScrapeDelay = 2 * time.Second
+	// retryScrapeDelayは失敗URLのリトライ処理前の待機時間です。
+	retryScrapeDelay = 5 * time.Second
+)
+
 // グローバル変数群 (CLIオプションの値を一時的に保持)
 // これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
 var llmAPIKey string
@@ -24,7 +35,7 @@ var scraperTimeout time.Duration
 var urlFile string
 
 // cmdOptionsはCLIオプションの値を集約するための構造体です。
-// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。（コメント修正反映）
+// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
 	LLMAPIKey      string
 	LLMTimeout     time.Duration
@@ -72,7 +83,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// 1. URLの読み込みとバリデーション
 	urls, err := generateURLs(opts.URLFile)
 	if err != nil {
-		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		// エラーラップを追加し、フェーズ情報を付与
 		return fmt.Errorf("URL生成フェーズでエラーが発生しました: %w", err)
 	}
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
@@ -80,13 +91,13 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// 2. Webコンテンツの取得とリトライ
 	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout)
 	if err != nil {
-		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		// エラーラップを追加し、フェーズ情報を付与
 		return fmt.Errorf("コンテンツ取得フェーズでエラーが発生しました: %w", err)
 	}
 
 	// 3. AIクリーンアップと出力
 	if err := generateCleanedOutput(ctx, successfulResults, opts.LLMAPIKey); err != nil {
-		// エラーラップを追加し、フェーズ情報を付与 (指摘事項反映)
+		// エラーラップを追加し、フェーズ情報を付与
 		return fmt.Errorf("AIクリーンアップフェーズでエラーが発生しました: %w", err)
 	}
 
@@ -121,7 +132,7 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	// ParallelScraperの初期化
 	s, err := scraper.NewParallelScraper(timeout)
 	if err != nil {
-		// エラーログ出力の追加 (指摘事項反映)
+		// エラーログ出力
 		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
 		return nil, fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
@@ -129,18 +140,19 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
-	// 無条件遅延 (2秒)
+	// 無条件遅延 (定数 initialScrapeDelay を使用)
 	// NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
-	log.Println("INFO: 並列抽出が完了しました。次の処理に進む前に2秒待機します。")
-	time.Sleep(2 * time.Second)
+	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
+	time.Sleep(initialScrapeDelay)
 
 	// 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
-	initialSuccessfulCount := len(successfulResults) // 初期成功数は len(successfulResults) で保持
+	initialSuccessfulCount := len(successfulResults) // 初期成功数を保持
 
 	// 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
-		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, timeout)
+		// リトライ遅延時間 (retryScrapeDelay) を引数として明示的に渡す
+		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, timeout, retryScrapeDelay)
 		if retryErr != nil {
 			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
 		}
@@ -153,7 +165,7 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
-	// ログ出力 (initialURLCountの代わりに len(urls) を使用し冗長性を排除)
+	// ログ出力
 	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
 		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
 
@@ -249,11 +261,11 @@ func formatErrorLog(err error) string {
 	return errMsg
 }
 
-// processFailedURLsは、失敗したURLに対し、5秒の遅延後に順次リトライを実行します。
+// processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
 // NOTE: サーバー負荷を考慮した固定遅延。将来的に指数バックオフなどの動的/ランダム遅延へ改善を検討。
-func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration) ([]types.URLResult, error) {
-	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
-	time.Sleep(5 * time.Second) // リトライ前の追加遅延 (5秒維持)
+func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration, retryDelay time.Duration) ([]types.URLResult, error) {
+	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
+	time.Sleep(retryDelay) // リトライ前の遅延 (引数として渡された定数を使用)
 
 	// リトライ用の非並列クライアントを初期化
 	retryScraperClient, err := scraper.NewClient(scraperTimeout)
