@@ -16,6 +16,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ----------------------------------------------------------------
+// グローバル変数と初期設定 (変更なし)
+// ----------------------------------------------------------------
+
 // コマンドラインオプションのグローバル変数
 var llmAPIKey string
 var llmTimeout time.Duration
@@ -45,100 +49,124 @@ var rootCmd = &cobra.Command{
 	RunE: runMain,
 }
 
-// runMain は CLIのメインロジックを実行します。
+// ----------------------------------------------------------------
+// メインオーケストレーター
+// ----------------------------------------------------------------
+
+// runMain は CLIのメインロジックを実行します。実行ステップを管理するオーケストレーターです。
 func runMain(cmd *cobra.Command, args []string) error {
-	var urls []string
-	var err error
-
-	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
-	c, err := cleaner.NewCleaner()
-	if err != nil {
-		// NewCleanerが失敗した場合（主にPrompt Builderのテンプレートパースエラー）、ここで終了
-		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
-	}
-
-	// URL入力ロジック
-	if urlFile != "" {
-		urls, err = readURLsFromFile(urlFile)
-		if err != nil {
-			return fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
-		}
-	} else {
-		return fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
-	}
-
-	if len(urls) == 0 {
-		return fmt.Errorf("URLリストファイルに有効なURLが一件も含まれていませんでした。")
-	}
-
 	// LLM処理のコンテキストタイムアウトをフラグ値で設定
 	ctx, cancel := context.WithTimeout(cmd.Context(), llmTimeout)
 	defer cancel()
 
+	// 1. URLの読み込みとバリデーション
+	urls, err := generateURLs(urlFile)
+	if err != nil {
+		return err
+	}
 	log.Printf("🚀 Action Perfect Get On: %d個のURLの処理を開始します。", len(urls))
 
-	// --- 1. 並列抽出フェーズ (Scraping) ---
-	log.Println("--- 1. Webコンテンツの並列抽出を開始 ---")
-
-	// ParallelScraperの初期化 (エラーをチェック)
-	s, err := scraper.NewParallelScraper(scraperTimeout)
+	// 2. Webコンテンツの取得とリトライ
+	successfulResults, err := generateContents(ctx, urls, scraperTimeout)
 	if err != nil {
-		// 初期化失敗時にログに出力
-		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
-		return fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
+		return err // 処理可能なコンテンツがゼロの場合のエラー
+	}
+
+	// 3. AIクリーンアップと出力
+	if err := generateCleanedOutput(ctx, successfulResults, llmAPIKey); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------
+// 抽出されたステップ関数 (ジェネレーター的な役割)
+// ----------------------------------------------------------------
+
+// generateURLs はファイルからURLを読み込み、バリデーションします。
+func generateURLs(filePath string) ([]string, error) {
+	if filePath == "" {
+		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
+	}
+
+	urls, err := readURLsFromFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
+	}
+
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("URLリストファイルに有効なURLが一件も含まれていませんでした。")
+	}
+	return urls, nil
+}
+
+// generateContents はURLのリストを受け取り、並列スクレイピングとリトライを実行し、成功した結果のみを返します。
+func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
+	log.Println("--- 1. Webコンテンツの並列抽出を開始 ---")
+	initialURLCount := len(urls)
+
+	// ParallelScraperの初期化
+	s, err := scraper.NewParallelScraper(timeout)
+	if err != nil {
+		return nil, fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
 	}
 
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
-	// -----------------------------------------------------------
-	// 2秒無条件遅延と結果の分類
-	// -----------------------------------------------------------
-
-	// 1. 無条件遅延 (2秒)
+	// 無条件遅延 (2秒)
 	log.Println("並列抽出が完了しました。サーバー負荷を考慮し、次の処理に進む前に2秒待機します。")
 	time.Sleep(2 * time.Second)
 
-	// 2. 結果の分類
+	// 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
-
-	// 初期成功数を保持
 	initialSuccessfulCount := len(successfulResults)
 
-	// 3. 失敗URLのリトライ処理
+	// 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
-		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, scraperTimeout)
+		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, timeout)
 		if retryErr != nil {
-			// 初期化エラーが発生した場合の警告 (処理は続行)
 			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
 		}
 		// リトライで成功した結果をメインのリストに追加
 		successfulResults = append(successfulResults, retriedSuccessfulResults...)
 	}
 
-	// 成功URLがゼロの場合は終了
+	// 最終成功数のチェック
 	if len(successfulResults) == 0 {
-		return fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
+		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
-	// --- 2. データ結合フェーズ (リトライ成功結果も含む) ---
+	// ログ出力
+	log.Printf("最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
+		len(successfulResults), initialURLCount, initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
+
+	return successfulResults, nil
+}
+
+// generateCleanedOutput は取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
+func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
+	// Cleanerの初期化
+	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
+	c, err := cleaner.NewCleaner()
+	if err != nil {
+		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+	}
+
+	// データ結合フェーズ
 	log.Println("--- 2. 抽出結果の結合 ---")
-
 	combinedText := cleaner.CombineContents(successfulResults)
+	log.Printf("結合されたテキストの長さ: %dバイト", len(combinedText))
 
-	// ログ出力に初期成功数と最終成功数を明記
-	log.Printf("結合されたテキストの長さ: %dバイト (初期成功: %d/%d URL, 最終成功: %d/%d URL)",
-		len(combinedText), initialSuccessfulCount, len(urls), len(successfulResults), len(urls))
-
-	// --- 3. AIクリーンアップフェーズ (LLM) ---
+	// AIクリーンアップフェーズ (LLM)
 	log.Println("--- 3. LLMによるテキストのクリーンアップと構造化を開始 (Go-AI-Client利用) ---")
-
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, llmAPIKey)
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, apiKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
 
-	// --- 4. 最終結果の出力 ---
+	// 最終結果の出力
 	fmt.Println("\n===============================================")
 	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
 	fmt.Println("===============================================")
@@ -149,7 +177,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 }
 
 // ----------------------------------------------------------------
-// ヘルパー関数
+// ヘルパー関数 (ロジックは元のコードからそのまま維持)
 // ----------------------------------------------------------------
 
 // readURLsFromFile は指定されたファイルからURLを読み込み、スライスとして返します。
