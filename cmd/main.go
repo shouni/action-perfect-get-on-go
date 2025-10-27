@@ -16,11 +16,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ----------------------------------------------------------------
-// グローバル変数と初期設定 (変更なし)
-// ----------------------------------------------------------------
-
-// コマンドラインオプションのグローバル変数
+// グローバル変数と設定
+// コマンドラインオプションの値を保持する変数群です。
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
@@ -49,11 +46,7 @@ var rootCmd = &cobra.Command{
 	RunE: runMain,
 }
 
-// ----------------------------------------------------------------
-// メインオーケストレーター
-// ----------------------------------------------------------------
-
-// runMain は CLIのメインロジックを実行します。実行ステップを管理するオーケストレーターです。
+// runMainはCLIのメインロジックを実行します。処理ステップをオーケストレーションします。
 func runMain(cmd *cobra.Command, args []string) error {
 	// LLM処理のコンテキストタイムアウトをフラグ値で設定
 	ctx, cancel := context.WithTimeout(cmd.Context(), llmTimeout)
@@ -80,11 +73,9 @@ func runMain(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// ----------------------------------------------------------------
-// 抽出されたステップ関数 (ジェネレーター的な役割)
-// ----------------------------------------------------------------
+// URL生成とバリデーション
 
-// generateURLs はファイルからURLを読み込み、バリデーションします。
+// generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
 func generateURLs(filePath string) ([]string, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
@@ -101,7 +92,9 @@ func generateURLs(filePath string) ([]string, error) {
 	return urls, nil
 }
 
-// generateContents はURLのリストを受け取り、並列スクレイピングとリトライを実行し、成功した結果のみを返します。
+// コンテンツのスクレイピングとリトライロジック
+
+// generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
 	log.Println("--- 1. Webコンテンツの並列抽出を開始 ---")
 	initialURLCount := len(urls)
@@ -145,7 +138,9 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	return successfulResults, nil
 }
 
-// generateCleanedOutput は取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
+// AIによるクリーンアップと出力
+
+// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
 func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
 	// Cleanerの初期化
 	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
@@ -176,12 +171,9 @@ func generateCleanedOutput(ctx context.Context, successfulResults []types.URLRes
 	return nil
 }
 
-// ----------------------------------------------------------------
-// ヘルパー関数 (ロジックは元のコードからそのまま維持)
-// ----------------------------------------------------------------
+// ヘルパー関数
 
-// readURLsFromFile は指定されたファイルからURLを読み込み、スライスとして返します。
-// 空行とコメント行（#から始まる）はスキップします。
+// readURLsFromFileは指定されたファイルからURLを読み込みます。空行とコメント行（#）はスキップされます。
 func readURLsFromFile(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -208,7 +200,7 @@ func readURLsFromFile(filePath string) ([]string, error) {
 	return urls, nil
 }
 
-// classifyResults は並列抽出の結果を成功と失敗に分類します。
+// classifyResultsは並列抽出の結果を成功と失敗に分類します。
 func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
 	for _, res := range results {
 		// エラーが発生した、またはコンテンツが空の場合は失敗と見なす
@@ -221,7 +213,7 @@ func classifyResults(results []types.URLResult) (successfulResults []types.URLRe
 	return successfulResults, failedURLs
 }
 
-// formatErrorLog は、冗長なHTMLボディを含むエラーメッセージを、ステータスコード情報のみに短縮します。
+// formatErrorLogは、冗長なエラーメッセージ（HTMLボディなどを含むもの）をステータスコード情報のみに短縮します。
 func formatErrorLog(err error) string {
 	errMsg := err.Error()
 	if idx := strings.Index(errMsg, ", ボディ: <!"); idx != -1 {
@@ -235,10 +227,10 @@ func formatErrorLog(err error) string {
 	return errMsg
 }
 
-// processFailedURLs は失敗したURLに対して5秒待機後、1回だけ順次リトライを実行します。
+// processFailedURLsは、失敗したURLに対し、5秒の遅延後に順次リトライを実行します。
 func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration) ([]types.URLResult, error) {
 	log.Printf("⚠️ WARNING: 抽出に失敗したURLが %d 件ありました。5秒待機後、順次リトライを開始します。", len(failedURLs))
-	time.Sleep(5 * time.Second) // リトライ前の追加遅延 (ここは変更なしで5秒維持)
+	time.Sleep(5 * time.Second) // リトライ前の追加遅延 (5秒維持)
 
 	// リトライ用の非並列クライアントを初期化
 	retryScraperClient, err := scraper.NewClient(scraperTimeout)
