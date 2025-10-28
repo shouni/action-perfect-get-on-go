@@ -24,7 +24,7 @@ import (
 const (
 	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
 	initialScrapeDelay = 2 * time.Second
-	retryScrapeDelay   = 5 * time.Second // ★ 修正: コメント削除 ★
+	retryScrapeDelay   = 5 * time.Second // 修正: コメント削除
 
 	// CLI/Appの実行ステップを表現するための定数
 	phaseURLs    = "URL生成フェーズ"
@@ -33,7 +33,6 @@ const (
 )
 
 // グローバル変数群 (CLIオプションの値を一時的に保持)
-// これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
@@ -41,7 +40,6 @@ var urlFile string
 var maxScraperParallel int
 
 // cmdOptionsはCLIオプションの値を集約するための構造体です。
-// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
 	LLMAPIKey          string
 	LLMTimeout         time.Duration
@@ -67,7 +65,7 @@ func NewApp(opts cmdOptions) *App {
 // Execute はアプリケーションの主要な処理フローを実行します。
 func (a *App) Execute(ctx context.Context) error {
 	// 1. URLの読み込みとバリデーション
-	urls, err := generateURLs(a.Options.URLFile)
+	urls, err := a.generateURLs() // 修正: Appメソッドを呼び出し
 	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseURLs, err)
 	}
@@ -80,7 +78,6 @@ func (a *App) Execute(ctx context.Context) error {
 	}
 
 	// 3. AIクリーンアップと出力
-	// ★ 修正: generateCleanedOutputをAppメソッドとして呼び出し、APIキーの引数を削除 ★
 	if err := a.generateCleanedOutput(ctx, successfulResults); err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
@@ -136,8 +133,26 @@ func runMain(cmd *cobra.Command, args []string) error {
 }
 
 // ----------------------------------------------------------------
-// Appのメソッド (コンテンツのスクレイピングとリトライロジック)
+// Appのメソッド (URL生成、スクレイピング、クリーンアップ)
 // ----------------------------------------------------------------
+
+// generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
+// 修正: Appのメソッドとして定義し、Optionsからファイルパスを取得するように変更
+func (a *App) generateURLs() ([]string, error) {
+	if a.Options.URLFile == "" {
+		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
+	}
+
+	urls, err := readURLsFromFile(a.Options.URLFile)
+	if err != nil {
+		return nil, fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
+	}
+
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("URLリストファイルに有効なURLが一件も含まれていませんでした。")
+	}
+	return urls, nil
+}
 
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
@@ -179,13 +194,9 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	return successfulResults, nil
 }
 
-// AIによるクリーンアップと出力
-
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
-// ★ 修正: Appのメソッドにし、LLMAPIKeyをApp.Optionsから取得するように変更 ★
 func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult) error {
 	// Cleanerの初期化
-	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
 	c, err := cleaner.NewCleaner()
 	if err != nil {
 		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
@@ -242,23 +253,6 @@ func readURLsFromFile(filePath string) ([]string, error) {
 		return nil, fmt.Errorf("ファイルの読み取り中にエラーが発生しました: %w", err)
 	}
 
-	return urls, nil
-}
-
-// generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
-func generateURLs(filePath string) ([]string, error) {
-	if filePath == "" {
-		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
-	}
-
-	urls, err := readURLsFromFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
-	}
-
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("URLリストファイルに有効なURLが一件も含まれていませんでした。")
-	}
 	return urls, nil
 }
 
