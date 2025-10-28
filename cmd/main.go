@@ -13,7 +13,6 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 
-	// 新たに必要なインポート
 	"github.com/shouni/go-web-exact/pkg/httpclient"
 	webextractor "github.com/shouni/go-web-exact/pkg/web"
 
@@ -29,22 +28,24 @@ const (
 	initialScrapeDelay = 2 * time.Second
 	// retryScrapeDelayは失敗URLのリトライ処理前の待機時間です。
 	retryScrapeDelay = 5 * time.Second
-	// 最大並列数の定数定義
-	maxScraperParallel = 10
 )
 
 // グローバル変数群 (CLIオプションの値を一時的に保持)
+// これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
 var urlFile string
+var maxScraperParallel int // ★ 修正: CLIオプションとして受け取るグローバル変数 ★
 
 // cmdOptionsはCLIオプションの値を集約するための構造体です。
+// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
-	LLMAPIKey      string
-	LLMTimeout     time.Duration
-	ScraperTimeout time.Duration
-	URLFile        string
+	LLMAPIKey          string
+	LLMTimeout         time.Duration
+	ScraperTimeout     time.Duration
+	URLFile            string
+	MaxScraperParallel int // ★ 修正: 構造体に追加 ★
 }
 
 func init() {
@@ -52,6 +53,7 @@ func init() {
 	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	rootCmd.PersistentFlags().StringVarP(&llmAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 	rootCmd.PersistentFlags().StringVarP(&urlFile, "url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
+	rootCmd.PersistentFlags().IntVarP(&maxScraperParallel, "parallel", "p", 10, "Webスクレイピングの最大同時並列リクエスト数")
 }
 
 // プログラムのエントリーポイント
@@ -74,10 +76,11 @@ var rootCmd = &cobra.Command{
 func runMain(cmd *cobra.Command, args []string) error {
 	// CLIオプションを構造体に集約
 	opts := cmdOptions{
-		LLMAPIKey:      llmAPIKey,
-		LLMTimeout:     llmTimeout,
-		ScraperTimeout: scraperTimeout,
-		URLFile:        urlFile,
+		LLMAPIKey:          llmAPIKey,
+		LLMTimeout:         llmTimeout,
+		ScraperTimeout:     scraperTimeout,
+		URLFile:            urlFile,
+		MaxScraperParallel: maxScraperParallel, // ★ 修正: 集約 ★
 	}
 
 	// LLM処理のコンテキストタイムアウトをフラグ値で設定
@@ -93,7 +96,8 @@ func runMain(cmd *cobra.Command, args []string) error {
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
 	// 2. Webコンテンツの取得とリトライ
-	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout)
+	// ★ 修正: generateContentsにmaxParallelを渡す ★
+	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout, opts.MaxScraperParallel)
 	if err != nil {
 		// エラーラップを追加し、フェーズ情報を付与
 		return fmt.Errorf("コンテンツ取得フェーズでエラーが発生しました: %w", err)
@@ -130,7 +134,8 @@ func generateURLs(filePath string) ([]string, error) {
 // コンテンツのスクレイピングとリトライロジック
 
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
-func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
+// ★ 修正: maxParallel引数を受け取る ★
+func generateContents(ctx context.Context, urls []string, timeout time.Duration, maxParallel int) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. httpclient の初期化 (リトライ、タイムアウト内蔵)
@@ -139,15 +144,16 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	// 2. Extractor の初期化 (依存性として httpClient を注入)
 	extractor := webextractor.NewExtractor(httpClient)
 
-	// 3. ParallelScraper の初期化 (依存性として extractor と最大並列数 10 を注入)
-	s := scraper.NewParallelScraper(extractor, maxScraperParallel)
+	// 3. ParallelScraper の初期化 (依存性として extractor と最大並列数 maxParallel を注入)
+	s := scraper.NewParallelScraper(extractor, maxParallel)
 
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
 	// 無条件遅延 (定数 initialScrapeDelay を使用)
 	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
-	time.Sleep(initialScrapeDelay)
+	// ★ 修正: コメント復元 ★
+	time.Sleep(initialScrapeDelay) // NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
 
 	// 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
@@ -181,6 +187,7 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
 func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
 	// Cleanerの初期化
+	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
 	c, err := cleaner.NewCleaner()
 	if err != nil {
 		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)

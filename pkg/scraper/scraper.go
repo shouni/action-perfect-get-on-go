@@ -15,6 +15,7 @@ type Scraper interface {
 }
 
 // ParallelScraper は Scraper インターフェースを実装する並列処理構造体です。
+// httpclient を直接知る必要はなく、webextractor.Extractor に依存します。
 type ParallelScraper struct {
 	extractor *webextractor.Extractor
 	// 最大並列数を保持するフィールド
@@ -23,9 +24,12 @@ type ParallelScraper struct {
 
 // NewParallelScraper は ParallelScraper を初期化します。
 // 依存性として Extractor と、最大同時実行数を受け取ります。
+// これにより、テスト時にモックの Extractor を注入できるようになります。
 func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *ParallelScraper {
 	if maxConcurrency <= 0 {
-		maxConcurrency = 10 // 安全なデフォルト値
+		// CLIオプションで指定がない場合、または無効な値が指定された場合の安全なデフォルト値。
+		// cmd/main.go の maxScraperParallel のデフォルト値と一致させています。
+		maxConcurrency = 10
 	}
 	return &ParallelScraper{
 		extractor:      extractor,
@@ -44,7 +48,7 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 	for _, url := range urls {
 		wg.Add(1)
 
-		// リソース（スロット）の確保。10件実行中の場合はここでブロックして待機。
+		// リソース（スロット）の確保。maxConcurrency件実行中の場合はここでブロックして待機。
 		semaphore <- struct{}{}
 
 		go func(u string) {
