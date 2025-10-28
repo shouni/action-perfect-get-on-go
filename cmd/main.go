@@ -13,6 +13,10 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 
+	// 新たに必要なインポート
+	"github.com/shouni/go-web-exact/pkg/httpclient"
+	webextractor "github.com/shouni/go-web-exact/pkg/web"
+
 	"github.com/spf13/cobra"
 )
 
@@ -89,6 +93,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
 	// 2. Webコンテンツの取得とリトライ
+	// 依存性 (httpclientとwebextractor) を構築し、generateContentsに渡す
 	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout)
 	if err != nil {
 		// エラーラップを追加し、フェーズ情報を付与
@@ -129,13 +134,19 @@ func generateURLs(filePath string) ([]string, error) {
 func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
-	// ParallelScraperの初期化
-	s, err := scraper.NewParallelScraper(timeout)
-	if err != nil {
-		// エラーログ出力
-		log.Printf("ERROR: スクライパーの初期化に失敗しました: %v", err)
-		return nil, fmt.Errorf("スクレイパーの初期化に失敗しました: %w", err)
-	}
+	// ★ 修正箇所1: ParallelScraperの依存性注入 (DI) を実現するための初期化ロジック ★
+
+	// 1. httpclient の初期化 (リトライ、タイムアウト内蔵)
+	httpClient := httpclient.New(timeout)
+
+	// 2. Extractor の初期化 (依存性として httpClient を注入)
+	extractor := webextractor.NewExtractor(httpClient)
+
+	// 3. ParallelScraper の初期化 (依存性として extractor を注入)
+	// scraper.NewParallelScraper は *webextractor.Extractor のみを受け取るように変更された
+	s := scraper.NewParallelScraper(extractor)
+
+	// エラーチェックは httpclient.New() と webextractor.NewExtractor() がエラーを返さない設計のため不要 (nilは返さない)
 
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
@@ -152,7 +163,10 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	// 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
 		// リトライ遅延時間 (retryScrapeDelay) を引数として明示的に渡す
-		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, timeout, retryScrapeDelay)
+		// リトライ処理用の Extractor を別途作成し、渡す
+		// (httpclientは共通だが、リトライ処理の責務を分離するため、再利用せず新しい Extractor を渡すことも可能だが、
+		//  ここではシンプルに新しい Extractor を作成する)
+		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
 		if retryErr != nil {
 			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
 		}
@@ -262,18 +276,12 @@ func formatErrorLog(err error) string {
 }
 
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
-// NOTE: サーバー負荷を考慮した固定遅延。将来的に指数バックオフなどの動的/ランダム遅延へ改善を検討。
-func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout time.Duration, retryDelay time.Duration) ([]types.URLResult, error) {
+func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webextractor.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
 	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
 	time.Sleep(retryDelay) // リトライ前の遅延 (引数として渡された定数を使用)
 
-	// リトライ用の非並列クライアントを初期化
-	retryScraperClient, err := scraper.NewClient(scraperTimeout)
-	if err != nil {
-		log.Printf("WARNING: リトライ用スクレイパーの初期化に失敗しました: %v。リトライ処理は実行されません。", err)
-		return nil, err // 初期化エラーは呼び出し元に通知
-	}
-
+	// リトライ処理は並列ではないため、ParallelScraper は不要。
+	// 順次リトライロジックに直接 Extractor を使用する。
 	var retriedSuccessfulResults []types.URLResult
 	log.Println("INFO: 失敗URLの順次リトライを開始します。")
 
@@ -281,10 +289,18 @@ func processFailedURLs(ctx context.Context, failedURLs []string, scraperTimeout 
 		log.Printf("INFO: リトライ中: %s", url)
 
 		// 順次再試行 (非並列)
-		content, err := retryScraperClient.ExtractContent(url, ctx)
+		content, hasBodyFound, err := extractor.FetchAndExtractText(url, ctx)
 
-		if err != nil || content == "" {
-			formattedErr := formatErrorLog(err)
+		// エラーチェックロジックを processFailedURLs に移す
+		var extractErr error
+		if err != nil {
+			extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
+		} else if content == "" || !hasBodyFound {
+			extractErr = fmt.Errorf("URL %s から有効な本文を抽出できませんでした", url)
+		}
+
+		if extractErr != nil {
+			formattedErr := formatErrorLog(extractErr)
 			log.Printf("ERROR: リトライでも %s の抽出に失敗しました: %s", url, formattedErr)
 		} else {
 			log.Printf("INFO: SUCCESS: %s の抽出がリトライで成功しました。", url)
