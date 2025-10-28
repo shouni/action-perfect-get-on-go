@@ -9,6 +9,10 @@ import (
 	webextractor "github.com/shouni/go-web-exact/pkg/web"
 )
 
+// DefaultMaxConcurrency は、並列スクレイピングのデフォルトの最大同時実行数を定義します。
+// CLIオプションで指定がない場合、または無効な値が指定された場合に使用されます。
+const DefaultMaxConcurrency = 10
+
 // Scraper はWebコンテンツの抽出機能を提供するインターフェースです。
 type Scraper interface {
 	ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult
@@ -29,7 +33,7 @@ func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *
 	if maxConcurrency <= 0 {
 		// CLIオプションで指定がない場合、または無効な値が指定された場合の安全なデフォルト値。
 		// cmd/main.go の maxScraperParallel のデフォルト値と一致させています。
-		maxConcurrency = 10
+		maxConcurrency = DefaultMaxConcurrency
 	}
 	return &ParallelScraper{
 		extractor:      extractor,
