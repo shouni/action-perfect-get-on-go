@@ -12,10 +12,8 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
-
 	"github.com/shouni/go-web-exact/pkg/httpclient"
 	webextractor "github.com/shouni/go-web-exact/pkg/web"
-
 	"github.com/spf13/cobra"
 )
 
@@ -24,22 +22,20 @@ import (
 // ----------------------------------------------------------------
 
 const (
-	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
 	initialScrapeDelay = 2 * time.Second
-	// retryScrapeDelayは失敗URLのリトライ処理前の待機時間です。
-	retryScrapeDelay = 5 * time.Second
+	retryScrapeDelay   = 5 * time.Second
+	phaseURLs          = "URL生成フェーズ"
+	phaseContent       = "コンテンツ取得フェーズ"
+	phaseCleanUp       = "AIクリーンアップフェーズ"
 )
 
-// グローバル変数群 (CLIオプションの値を一時的に保持)
-// これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
+// グローバル変数群とcmdOptionsの定義 (変更なし)
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
 var urlFile string
 var maxScraperParallel int
 
-// cmdOptionsはCLIオプションの値を集約するための構造体です。
-// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
 	LLMAPIKey          string
 	LLMTimeout         time.Duration
@@ -48,16 +44,57 @@ type cmdOptions struct {
 	MaxScraperParallel int
 }
 
+// ----------------------------------------------------------------
+// App構造体の導入 (ビジネスロジックの格納)
+// ----------------------------------------------------------------
+
+// App はアプリケーションの実行に必要なすべてのロジックをカプセル化します。
+type App struct {
+	Options cmdOptions
+}
+
+// NewApp は cmdOptions を使って App の新しいインスタンスを作成します。
+func NewApp(opts cmdOptions) *App {
+	return &App{Options: opts}
+}
+
+// Execute はアプリケーションの主要な処理フローを実行します。
+// runMainのロジックをここに移動させ、エラー処理を改善します。
+func (a *App) Execute(ctx context.Context) error {
+	// 1. URLの読み込みとバリデーション
+	urls, err := generateURLs(a.Options.URLFile)
+	if err != nil {
+		return fmt.Errorf("%sでエラーが発生しました: %w", phaseURLs, err)
+	}
+	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
+
+	// 2. Webコンテンツの取得とリトライ
+	// generateContentsのロジックを Appのメソッドとして呼び出す
+	successfulResults, err := a.generateContents(ctx, urls)
+	if err != nil {
+		return fmt.Errorf("%sでエラーが発生しました: %w", phaseContent, err)
+	}
+
+	// 3. AIクリーンアップと出力
+	if err := generateCleanedOutput(ctx, successfulResults, a.Options.LLMAPIKey); err != nil {
+		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------
+// CLI初期化
+// ----------------------------------------------------------------
+
 func init() {
 	rootCmd.PersistentFlags().DurationVarP(&llmTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
 	rootCmd.PersistentFlags().DurationVarP(&scraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	rootCmd.PersistentFlags().StringVarP(&llmAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 	rootCmd.PersistentFlags().StringVarP(&urlFile, "url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
-	// scraperパッケージのデフォルト値を参照
 	rootCmd.PersistentFlags().IntVarP(&maxScraperParallel, "parallel", "p", scraper.DefaultMaxConcurrency, "Webスクレイピングの最大同時並列リクエスト数")
 }
 
-// プログラムのエントリーポイント
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -73,7 +110,7 @@ var rootCmd = &cobra.Command{
 	RunE: runMain,
 }
 
-// runMainはCLIのメインロジックを実行します。処理ステップをオーケストレーションします。
+// runMainはCLIのメインロジックを実行します。Appを初期化し、実行を委譲します。
 func runMain(cmd *cobra.Command, args []string) error {
 	// CLIオプションを構造体に集約
 	opts := cmdOptions{
@@ -88,34 +125,118 @@ func runMain(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
 	defer cancel()
 
-	// 1. URLの読み込みとバリデーション
-	urls, err := generateURLs(opts.URLFile)
-	if err != nil {
-		// エラーラップを追加し、フェーズ情報を付与
-		return fmt.Errorf("URL生成フェーズでエラーが発生しました: %w", err)
-	}
-	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
+	// App構造体を初期化し、実行ロジックを委譲する
+	app := NewApp(opts)
+	return app.Execute(ctx)
+}
 
-	// 2. Webコンテンツの取得とリトライ
-	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout, opts.MaxScraperParallel)
-	if err != nil {
-		// エラーラップを追加し、フェーズ情報を付与
-		return fmt.Errorf("コンテンツ取得フェーズでエラーが発生しました: %w", err)
+// ----------------------------------------------------------------
+// Appのメソッド (コンテンツのスクレイピングとリトライロジック)
+// ----------------------------------------------------------------
+
+// generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
+// Appのメソッドとなり、Optionsから必要な値を取得します。
+func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
+	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
+
+	// 1. 依存性の初期化
+	httpClient := httpclient.New(a.Options.ScraperTimeout)
+	extractor := webextractor.NewExtractor(httpClient)
+	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
+
+	// 2. 並列実行
+	results := s.ScrapeInParallel(ctx, urls)
+
+	// 3. 無条件遅延
+	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
+	time.Sleep(initialScrapeDelay) // NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
+
+	// 4. 結果の分類
+	successfulResults, failedURLs := classifyResults(results)
+	initialSuccessfulCount := len(successfulResults)
+
+	// 5. 失敗URLのリトライ処理
+	if len(failedURLs) > 0 {
+		// processFailedURLsを直接呼び出す
+		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
+		if retryErr != nil {
+			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
+		}
+		successfulResults = append(successfulResults, retriedSuccessfulResults...)
 	}
 
-	// 3. AIクリーンアップと出力
-	if err := generateCleanedOutput(ctx, successfulResults, opts.LLMAPIKey); err != nil {
-		// エラーラップを追加し、フェーズ情報を付与
-		return fmt.Errorf("AIクリーンアップフェーズでエラーが発生しました: %w", err)
+	// 6. 最終チェックとログ
+	if len(successfulResults) == 0 {
+		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
+
+	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
+		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
+
+	return successfulResults, nil
+}
+
+// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
+func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
+	// ... (元のロジックと全く同じ)
+	c, err := cleaner.NewCleaner()
+	if err != nil {
+		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+	}
+
+	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
+	combinedText := cleaner.CombineContents(successfulResults)
+	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
+
+	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, apiKey)
+	if err != nil {
+		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
+	}
+
+	fmt.Println("\n===============================================")
+	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
+	fmt.Println("===============================================")
+	fmt.Println(cleanedText)
+	fmt.Println("===============================================")
 
 	return nil
 }
 
-// URL生成とバリデーション
+// ----------------------------------------------------------------
+// ヘルパー関数 (変更なし)
+// ----------------------------------------------------------------
+
+// readURLsFromFileは指定されたファイルからURLを読み込みます。
+func readURLsFromFile(filePath string) ([]string, error) {
+	// ... (元のロジックと全く同じ)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var urls []string
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		urls = append(urls, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("ファイルの読み取り中にエラーが発生しました: %w", err)
+	}
+
+	return urls, nil
+}
 
 // generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
 func generateURLs(filePath string) ([]string, error) {
+	// ... (元のロジックと全く同じ)
 	if filePath == "" {
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
 	}
@@ -131,121 +252,10 @@ func generateURLs(filePath string) ([]string, error) {
 	return urls, nil
 }
 
-// コンテンツのスクレイピングとリトライロジック
-
-// generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
-func generateContents(ctx context.Context, urls []string, timeout time.Duration, maxParallel int) ([]types.URLResult, error) {
-	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
-
-	// 1. httpclient の初期化 (リトライ、タイムアウト内蔵)
-	httpClient := httpclient.New(timeout)
-
-	// 2. Extractor の初期化 (依存性として httpClient を注入)
-	extractor := webextractor.NewExtractor(httpClient)
-
-	// 3. ParallelScraper の初期化 (依存性として extractor と最大並列数 maxParallel を注入)
-	s := scraper.NewParallelScraper(extractor, maxParallel)
-
-	// 並列実行
-	results := s.ScrapeInParallel(ctx, urls)
-
-	// 無条件遅延 (定数 initialScrapeDelay を使用)
-	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
-	time.Sleep(initialScrapeDelay) // NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
-
-	// 結果の分類
-	successfulResults, failedURLs := classifyResults(results)
-	initialSuccessfulCount := len(successfulResults) // 初期成功数を保持
-
-	// 失敗URLのリトライ処理
-	if len(failedURLs) > 0 {
-		// リトライ遅延時間 (retryScrapeDelay) を引数として明示的に渡す
-		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
-		if retryErr != nil {
-			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
-		}
-		// リトライで成功した結果をメインのリストに追加
-		successfulResults = append(successfulResults, retriedSuccessfulResults...)
-	}
-
-	// 最終成功数のチェック
-	if len(successfulResults) == 0 {
-		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
-	}
-
-	// ログ出力
-	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
-		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
-
-	return successfulResults, nil
-}
-
-// AIによるクリーンアップと出力
-
-// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
-func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
-	// Cleanerの初期化
-	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
-	c, err := cleaner.NewCleaner()
-	if err != nil {
-		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
-	}
-
-	// データ結合フェーズ
-	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
-	combinedText := cleaner.CombineContents(successfulResults)
-	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
-
-	// AIクリーンアップフェーズ (LLM)
-	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, apiKey)
-	if err != nil {
-		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
-	}
-
-	// 最終結果の出力
-	fmt.Println("\n===============================================")
-	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
-	fmt.Println("===============================================")
-	fmt.Println(cleanedText)
-	fmt.Println("===============================================")
-
-	return nil
-}
-
-// ヘルパー関数
-
-// readURLsFromFileは指定されたファイルからURLを読み込みます。空行とコメント行（#）はスキップされます。
-func readURLsFromFile(filePath string) ([]string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var urls []string
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// 空行とコメント行（#で始まる）をスキップ
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		urls = append(urls, line)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("ファイルの読み取り中にエラーが発生しました: %w", err)
-	}
-
-	return urls, nil
-}
-
 // classifyResultsは並列抽出の結果を成功と失敗に分類します。
 func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
+	// ... (元のロジックと全く同じ)
 	for _, res := range results {
-		// エラーが発生した、またはコンテンツが空の場合は失敗と見なす
 		if res.Error != nil || res.Content == "" {
 			failedURLs = append(failedURLs, res.URL)
 		} else {
@@ -257,6 +267,7 @@ func classifyResults(results []types.URLResult) (successfulResults []types.URLRe
 
 // formatErrorLogは、冗長なエラーメッセージ（HTMLボディなどを含むもの）をステータスコード情報のみに短縮します。
 func formatErrorLog(err error) string {
+	// ... (元のロジックと全く同じ)
 	errMsg := err.Error()
 	if idx := strings.Index(errMsg, ", ボディ: <!"); idx != -1 {
 		errMsg = errMsg[:idx]
@@ -271,8 +282,9 @@ func formatErrorLog(err error) string {
 
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
 func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webextractor.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
+	// ... (元のロジックと全く同じ)
 	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
-	time.Sleep(retryDelay) // リトライ前の遅延 (引数として渡された定数を使用)
+	time.Sleep(retryDelay)
 
 	var retriedSuccessfulResults []types.URLResult
 	log.Println("INFO: 失敗URLの順次リトライを開始します。")
@@ -280,10 +292,8 @@ func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webe
 	for _, url := range failedURLs {
 		log.Printf("INFO: リトライ中: %s", url)
 
-		// 順次再試行 (非並列)
 		content, hasBodyFound, err := extractor.FetchAndExtractText(url, ctx)
 
-		// エラーチェックロジックを processFailedURLs に移す
 		var extractErr error
 		if err != nil {
 			extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
