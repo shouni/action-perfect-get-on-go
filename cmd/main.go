@@ -22,20 +22,26 @@ import (
 // ----------------------------------------------------------------
 
 const (
+	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
 	initialScrapeDelay = 2 * time.Second
-	retryScrapeDelay   = 5 * time.Second
-	phaseURLs          = "URL生成フェーズ"
-	phaseContent       = "コンテンツ取得フェーズ"
-	phaseCleanUp       = "AIクリーンアップフェーズ"
+	retryScrapeDelay   = 5 * time.Second // ★ 修正: コメント削除 ★
+
+	// CLI/Appの実行ステップを表現するための定数
+	phaseURLs    = "URL生成フェーズ"
+	phaseContent = "コンテンツ取得フェーズ"
+	phaseCleanUp = "AIクリーンアップフェーズ"
 )
 
-// グローバル変数群とcmdOptionsの定義 (変更なし)
+// グローバル変数群 (CLIオプションの値を一時的に保持)
+// これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
 var urlFile string
 var maxScraperParallel int
 
+// cmdOptionsはCLIオプションの値を集約するための構造体です。
+// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
 	LLMAPIKey          string
 	LLMTimeout         time.Duration
@@ -59,7 +65,6 @@ func NewApp(opts cmdOptions) *App {
 }
 
 // Execute はアプリケーションの主要な処理フローを実行します。
-// runMainのロジックをここに移動させ、エラー処理を改善します。
 func (a *App) Execute(ctx context.Context) error {
 	// 1. URLの読み込みとバリデーション
 	urls, err := generateURLs(a.Options.URLFile)
@@ -69,14 +74,14 @@ func (a *App) Execute(ctx context.Context) error {
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
 	// 2. Webコンテンツの取得とリトライ
-	// generateContentsのロジックを Appのメソッドとして呼び出す
 	successfulResults, err := a.generateContents(ctx, urls)
 	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseContent, err)
 	}
 
 	// 3. AIクリーンアップと出力
-	if err := generateCleanedOutput(ctx, successfulResults, a.Options.LLMAPIKey); err != nil {
+	// ★ 修正: generateCleanedOutputをAppメソッドとして呼び出し、APIキーの引数を削除 ★
+	if err := a.generateCleanedOutput(ctx, successfulResults); err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
 
@@ -135,11 +140,10 @@ func runMain(cmd *cobra.Command, args []string) error {
 // ----------------------------------------------------------------
 
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
-// Appのメソッドとなり、Optionsから必要な値を取得します。
 func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
-	// 1. 依存性の初期化
+	// 1. 依存性の初期化 (Optionsから設定値を取得)
 	httpClient := httpclient.New(a.Options.ScraperTimeout)
 	extractor := webextractor.NewExtractor(httpClient)
 	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
@@ -157,7 +161,6 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 
 	// 5. 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
-		// processFailedURLsを直接呼び出す
 		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
 		if retryErr != nil {
 			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
@@ -176,24 +179,33 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	return successfulResults, nil
 }
 
+// AIによるクリーンアップと出力
+
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
-func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
-	// ... (元のロジックと全く同じ)
+// ★ 修正: Appのメソッドにし、LLMAPIKeyをApp.Optionsから取得するように変更 ★
+func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult) error {
+	// Cleanerの初期化
+	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
 	c, err := cleaner.NewCleaner()
 	if err != nil {
 		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
+	// データ結合フェーズ
 	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
 	combinedText := cleaner.CombineContents(successfulResults)
 	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
 
+	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, apiKey)
+
+	// APIキーは App.Options から取得
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
 
+	// 最終結果の出力
 	fmt.Println("\n===============================================")
 	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
 	fmt.Println("===============================================")
@@ -209,7 +221,6 @@ func generateCleanedOutput(ctx context.Context, successfulResults []types.URLRes
 
 // readURLsFromFileは指定されたファイルからURLを読み込みます。
 func readURLsFromFile(filePath string) ([]string, error) {
-	// ... (元のロジックと全く同じ)
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -236,7 +247,6 @@ func readURLsFromFile(filePath string) ([]string, error) {
 
 // generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
 func generateURLs(filePath string) ([]string, error) {
-	// ... (元のロジックと全く同じ)
 	if filePath == "" {
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
 	}
@@ -254,7 +264,6 @@ func generateURLs(filePath string) ([]string, error) {
 
 // classifyResultsは並列抽出の結果を成功と失敗に分類します。
 func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
-	// ... (元のロジックと全く同じ)
 	for _, res := range results {
 		if res.Error != nil || res.Content == "" {
 			failedURLs = append(failedURLs, res.URL)
@@ -267,7 +276,6 @@ func classifyResults(results []types.URLResult) (successfulResults []types.URLRe
 
 // formatErrorLogは、冗長なエラーメッセージ（HTMLボディなどを含むもの）をステータスコード情報のみに短縮します。
 func formatErrorLog(err error) string {
-	// ... (元のロジックと全く同じ)
 	errMsg := err.Error()
 	if idx := strings.Index(errMsg, ", ボディ: <!"); idx != -1 {
 		errMsg = errMsg[:idx]
@@ -282,7 +290,6 @@ func formatErrorLog(err error) string {
 
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
 func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webextractor.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
-	// ... (元のロジックと全く同じ)
 	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
 	time.Sleep(retryDelay)
 
