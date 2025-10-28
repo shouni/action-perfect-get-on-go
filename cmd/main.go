@@ -163,9 +163,6 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 	// 失敗URLのリトライ処理
 	if len(failedURLs) > 0 {
 		// リトライ遅延時間 (retryScrapeDelay) を引数として明示的に渡す
-		// リトライ処理用の Extractor を別途作成し、渡す
-		// (httpclientは共通だが、リトライ処理の責務を分離するため、再利用せず新しい Extractor を渡すことも可能だが、
-		//  ここではシンプルに新しい Extractor を作成する)
 		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
 		if retryErr != nil {
 			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
