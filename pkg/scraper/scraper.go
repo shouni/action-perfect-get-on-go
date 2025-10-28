@@ -15,19 +15,21 @@ type Scraper interface {
 }
 
 // ParallelScraper は Scraper インターフェースを実装する並列処理構造体です。
-// httpclient を直接知る必要はなく、webextractor.Extractor に依存します。
 type ParallelScraper struct {
 	extractor *webextractor.Extractor
+	// 最大並列数を保持するフィールド
+	maxConcurrency int
 }
 
 // NewParallelScraper は ParallelScraper を初期化します。
-// 依存性として、既に初期化された *webextractor.Extractor を受け取ります（DI）。
-// これにより、テスト時にモックの Extractor を注入できるようになります。
-// time.Duration の timeout は、クライアントの初期化時に外部で設定される想定です。
-func NewParallelScraper(extractor *webextractor.Extractor) *ParallelScraper {
-	// NewClient は削除され、ここでは依存性の注入のみを行う
+// 依存性として Extractor と、最大同時実行数を受け取ります。
+func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *ParallelScraper {
+	if maxConcurrency <= 0 {
+		maxConcurrency = 10 // 安全なデフォルト値
+	}
 	return &ParallelScraper{
-		extractor: extractor,
+		extractor:      extractor,
+		maxConcurrency: maxConcurrency,
 	}
 }
 
@@ -36,11 +38,21 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 	var wg sync.WaitGroup
 	resultsChan := make(chan types.URLResult, len(urls))
 
+	// バッファ付きチャネルをセマフォとして使用し、同時実行数を制限する
+	semaphore := make(chan struct{}, s.maxConcurrency)
+
 	for _, url := range urls {
 		wg.Add(1)
 
+		// リソース（スロット）の確保。10件実行中の場合はここでブロックして待機。
+		semaphore <- struct{}{}
+
 		go func(u string) {
 			defer wg.Done()
+
+			// 処理完了後にリソース（スロット）を解放。他の待機中のGoroutineが実行可能になる。
+			defer func() { <-semaphore }()
+
 			select {
 			case <-ctx.Done():
 				resultsChan <- types.URLResult{
@@ -51,8 +63,6 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 			default:
 			}
 
-			// 修正: s.client.ExtractContent を呼び出す代わりに、
-			// 内部の Extractor の FetchAndExtractText を直接呼び出します。
 			content, hasBodyFound, err := s.extractor.FetchAndExtractText(u, ctx)
 
 			var extractErr error

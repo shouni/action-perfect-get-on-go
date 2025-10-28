@@ -29,17 +29,17 @@ const (
 	initialScrapeDelay = 2 * time.Second
 	// retryScrapeDelayは失敗URLのリトライ処理前の待機時間です。
 	retryScrapeDelay = 5 * time.Second
+	// 最大並列数の定数定義
+	maxScraperParallel = 10
 )
 
 // グローバル変数群 (CLIオプションの値を一時的に保持)
-// これらの変数はinit()でcobraフラグにバインドされ、runMainの開始時にcmdOptions構造体に集約されます。
 var llmAPIKey string
 var llmTimeout time.Duration
 var scraperTimeout time.Duration
 var urlFile string
 
 // cmdOptionsはCLIオプションの値を集約するための構造体です。
-// これを関数に渡すことで依存性を明示的にし、テスト容易性を高めます。
 type cmdOptions struct {
 	LLMAPIKey      string
 	LLMTimeout     time.Duration
@@ -93,7 +93,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
 	// 2. Webコンテンツの取得とリトライ
-	// 依存性 (httpclientとwebextractor) を構築し、generateContentsに渡す
 	successfulResults, err := generateContents(ctx, urls, opts.ScraperTimeout)
 	if err != nil {
 		// エラーラップを追加し、フェーズ情報を付与
@@ -134,25 +133,19 @@ func generateURLs(filePath string) ([]string, error) {
 func generateContents(ctx context.Context, urls []string, timeout time.Duration) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
-	// ★ 修正箇所1: ParallelScraperの依存性注入 (DI) を実現するための初期化ロジック ★
-
 	// 1. httpclient の初期化 (リトライ、タイムアウト内蔵)
 	httpClient := httpclient.New(timeout)
 
 	// 2. Extractor の初期化 (依存性として httpClient を注入)
 	extractor := webextractor.NewExtractor(httpClient)
 
-	// 3. ParallelScraper の初期化 (依存性として extractor を注入)
-	// scraper.NewParallelScraper は *webextractor.Extractor のみを受け取るように変更された
-	s := scraper.NewParallelScraper(extractor)
-
-	// エラーチェックは httpclient.New() と webextractor.NewExtractor() がエラーを返さない設計のため不要 (nilは返さない)
+	// 3. ParallelScraper の初期化 (依存性として extractor と最大並列数 10 を注入)
+	s := scraper.NewParallelScraper(extractor, maxScraperParallel)
 
 	// 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
 	// 無条件遅延 (定数 initialScrapeDelay を使用)
-	// NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
 	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
 	time.Sleep(initialScrapeDelay)
 
@@ -188,7 +181,6 @@ func generateContents(ctx context.Context, urls []string, timeout time.Duration)
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
 func generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult, apiKey string) error {
 	// Cleanerの初期化
-	// PromptBuilderのコスト削減のため、ここで一度だけ初期化し再利用します。
 	c, err := cleaner.NewCleaner()
 	if err != nil {
 		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
@@ -277,8 +269,6 @@ func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webe
 	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
 	time.Sleep(retryDelay) // リトライ前の遅延 (引数として渡された定数を使用)
 
-	// リトライ処理は並列ではないため、ParallelScraper は不要。
-	// 順次リトライロジックに直接 Extractor を使用する。
 	var retriedSuccessfulResults []types.URLResult
 	log.Println("INFO: 失敗URLの順次リトライを開始します。")
 
