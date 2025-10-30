@@ -76,7 +76,9 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 			if err != nil {
 				extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
 			} else if !hasBodyFound {
-				// 抽出ロジックの判定結果 (本文が見つからなかった場合)
+				// NOTE: go-web-exact/v2 の Extract メソッドは、本文が見つかった (hasBodyFound=true) 場合、
+				// content が空文字列になることはないと想定しています。
+				// そのため、本文が見つからなかった場合のみを抽出失敗と判断します。
 				extractErr = fmt.Errorf("URL %s から有効な本文を抽出できませんでした", u)
 			}
 
