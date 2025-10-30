@@ -12,7 +12,7 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
-	"github.com/shouni/go-cli-base"
+	"github.com/shouni/go-cli-base" // パッケージ clibase
 	"github.com/shouni/go-web-exact/v2/pkg/client"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
 
@@ -36,11 +36,11 @@ const (
 )
 
 // ----------------------------------------------------------------
-// CLIフラグの定義
+// CLIオプションの構造体 (復活)
 // ----------------------------------------------------------------
 
-// appFlags は、アプリケーション固有のCLIオプションを保持します。
-var appFlags struct {
+// cmdOptionsはCLIオプションの値を集約するための構造体です。
+type cmdOptions struct {
 	LLMAPIKey          string
 	LLMTimeout         time.Duration
 	ScraperTimeout     time.Duration
@@ -49,15 +49,17 @@ var appFlags struct {
 }
 
 // ----------------------------------------------------------------
-// App構造体とロジック
+// App構造体の導入 (Optionsフィールド復活)
 // ----------------------------------------------------------------
 
 // App はアプリケーションの実行に必要なすべてのロジックをカプセル化します。
-type App struct{}
+type App struct {
+	Options cmdOptions // Appが自身のオプションを持つ
+}
 
-// NewApp は App の新しいインスタンスを作成します。
-func NewApp() *App {
-	return &App{}
+// NewApp は cmdOptions を使って App の新しいインスタンスを作成します。
+func NewApp(opts cmdOptions) *App {
+	return &App{Options: opts}
 }
 
 // Execute はアプリケーションの主要な処理フローを実行します。
@@ -81,12 +83,12 @@ func (a *App) Execute(ctx context.Context) error {
 }
 
 // ----------------------------------------------------------------
-// CLIエントリポイント (clibaseを流用)
+// CLIエントリポイント (go-cli-baseを流用)
 // ----------------------------------------------------------------
 
 // runCmd は、メインのCLIコマンド定義です。
 var runCmd = &cobra.Command{
-	Use:   "run", // メインロジックを "run" サブコマンドとして実行
+	Use:   "run",
 	Short: "Webコンテンツの取得とAIクリーンアップを実行します。",
 	Long: `
 Webコンテンツの取得とAIクリーンアップを実行します。
@@ -96,48 +98,59 @@ Webコンテンツの取得とAIクリーンアップを実行します。
 }
 
 func init() {
-	// 既存のフラグを appFlags に直接バインド
-	runCmd.Flags().DurationVarP(&appFlags.LLMTimeout, "llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
-	runCmd.Flags().DurationVarP(&appFlags.ScraperTimeout, "scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
-	runCmd.Flags().StringVarP(&appFlags.LLMAPIKey, "api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
-	runCmd.Flags().StringVarP(&appFlags.URLFile, "url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
-	runCmd.Flags().IntVarP(&appFlags.MaxScraperParallel, "parallel", "p", scraper.DefaultMaxConcurrency, "Webスクレイピングの最大同時並列リクエスト数")
+	// ⬇️ 修正: フラグは cobra.Command に直接定義し、runMainLogic で取得する
+	runCmd.Flags().DurationP("llm-timeout", "t", 5*time.Minute, "LLM処理のタイムアウト時間")
+	runCmd.Flags().DurationP("scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
+	runCmd.Flags().StringP("api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
+	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
+	runCmd.Flags().IntP("parallel", "p", scraper.DefaultMaxConcurrency, "Webスクレイピングの最大同時並列リクエスト数")
 
-	// URLファイルは必須とする
 	runCmd.MarkFlagRequired("url-file")
 }
 
 func main() {
-	// clibase.Execute を使用してアプリケーションを実行。rootCmdの定義やos.Exit(1)はclibaseが担当。
+	// go-cli-base.Execute を使用してアプリケーションを実行。
 	clibase.Execute("action-perfect-get-on-go", runCmd)
 }
 
-// runMainLogicはCLIのメインロジックを実行します。
+// runMainLogicはCLIのメインロジックを実行し、フラグをAppに渡します。
 func runMainLogic(cmd *cobra.Command, args []string) error {
+	// ⬇️ 修正: cmd.Flags().GetXXX() を使ってフラグの値を読み取り、cmdOptionsに集約
+	llmTimeout, _ := cmd.Flags().GetDuration("llm-timeout")
+	scraperTimeout, _ := cmd.Flags().GetDuration("scraper-timeout")
+	llmAPIKey, _ := cmd.Flags().GetString("api-key")
+	urlFile, _ := cmd.Flags().GetString("url-file")
+	maxScraperParallel, _ := cmd.Flags().GetInt("parallel")
+
+	opts := cmdOptions{
+		LLMAPIKey:          llmAPIKey,
+		LLMTimeout:         llmTimeout,
+		ScraperTimeout:     scraperTimeout,
+		URLFile:            urlFile,
+		MaxScraperParallel: maxScraperParallel,
+	}
+
 	// グローバルタイムアウト設定
-	// cmd.Context() は clibase の PersistentPreRun が設定したコンテキスト（通常は context.Background()）
-	// を継承している。
-	ctx, cancel := context.WithTimeout(cmd.Context(), appFlags.LLMTimeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout) // opts.LLMTimeout を参照
 	defer cancel()
 
-	app := NewApp()
+	app := NewApp(opts) // opts を App に渡す
 	return app.Execute(ctx)
 }
 
 // ----------------------------------------------------------------
-// Appのメソッド (フラグを直接参照するように修正)
+// Appのメソッド (a.Optionsを参照するように修正)
 // ----------------------------------------------------------------
 
 // generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
 func (a *App) generateURLs() ([]string, error) {
-	// appFlags.URLFile を直接参照
-	if appFlags.URLFile == "" {
-		// MarkFlagRequiredによりここに到達することは稀だが、防御的なチェック
+	// ⬇️ 修正: a.Options.URLFile を参照
+	if a.Options.URLFile == "" {
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
 	}
 
-	// appFlags.URLFile を直接参照
-	urls, err := readURLsFromFile(appFlags.URLFile)
+	// ⬇️ 修正: a.Options.URLFile を参照
+	urls, err := readURLsFromFile(a.Options.URLFile)
 	if err != nil {
 		return nil, fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
 	}
@@ -156,8 +169,8 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	clientOptions := []client.ClientOption{
 		client.WithMaxRetries(defaultHTTPMaxRetries),
 	}
-	// appFlags.ScraperTimeout を直接参照
-	webClient := client.New(appFlags.ScraperTimeout, clientOptions...)
+	// ⬇️ 修正: a.Options.ScraperTimeout を参照
+	webClient := client.New(a.Options.ScraperTimeout, clientOptions...)
 
 	// 新しいクライアント (Fetcher) を Extractor に注入
 	extractor, err := extract.NewExtractor(webClient)
@@ -167,8 +180,8 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
 	}
 
-	// appFlags.MaxScraperParallel を直接参照
-	s := scraper.NewParallelScraper(extractor, appFlags.MaxScraperParallel)
+	// ⬇️ 修正: a.Options.MaxScraperParallel を参照
+	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
 
 	// 2. 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
@@ -217,8 +230,8 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []typ
 	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	// appFlags.LLMAPIKey を直接参照
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, appFlags.LLMAPIKey)
+	// ⬇️ 修正: a.Options.LLMAPIKey を参照
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
