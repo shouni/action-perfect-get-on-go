@@ -19,10 +19,12 @@ import (
 )
 
 // ----------------------------------------------------------------
-// 定数定義
+// 定数定義 (コメント復元)
 // ----------------------------------------------------------------
 
 const (
+	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
+	// サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
 	initialScrapeDelay = 2 * time.Second
 	retryScrapeDelay   = 5 * time.Second
 
@@ -151,15 +153,13 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. 依存性の初期化 (Optionsから設定値を取得)
-
-	// ⬇️ 修正: go-web-exact/v2/pkg/client を使用してクライアントを初期化
-	// go-web-exact/v2 のクライアントはリトライロジックを内包し、extract.Fetcher インターフェースを満たす
 	clientOptions := []client.ClientOption{
 		client.WithMaxRetries(5), // デフォルトのリトライ回数を設定
 	}
-	webClient := client.New(a.Options.ScraperTimeout, clientOptions...) // ScraperTimeoutをHTTPタイムアウトとして使用
+	// go-web-exact/v2/pkg/client を使用してクライアントを初期化 (リトライ機能内蔵)
+	webClient := client.New(a.Options.ScraperTimeout, clientOptions...)
 
-	// ⬇️ 修正: 新しいクライアント (Fetcher) を Extractor に注入
+	// 新しいクライアント (Fetcher) を Extractor に注入
 	extractor, err := extract.NewExtractor(webClient)
 	if err != nil {
 		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
