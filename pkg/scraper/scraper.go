@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
-	webextractor "github.com/shouni/go-web-exact/pkg/web"
+	"github.com/shouni/go-web-exact/v2/pkg/extract"
 )
 
 // DefaultMaxConcurrency は、並列スクレイピングのデフォルトの最大同時実行数を定義します。
@@ -21,7 +21,7 @@ type Scraper interface {
 // ParallelScraper は Scraper インターフェースを実装する並列処理構造体です。
 // httpclient を直接知る必要はなく、webextractor.Extractor に依存します。
 type ParallelScraper struct {
-	extractor *webextractor.Extractor
+	extractor *extract.Extractor
 	// 最大並列数を保持するフィールド
 	maxConcurrency int
 }
@@ -29,10 +29,9 @@ type ParallelScraper struct {
 // NewParallelScraper は ParallelScraper を初期化します。
 // 依存性として Extractor と、最大同時実行数を受け取ります。
 // これにより、テスト時にモックの Extractor を注入できるようになります。
-func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *ParallelScraper {
+func NewParallelScraper(extractor *extract.Extractor, maxConcurrency int) *ParallelScraper {
 	if maxConcurrency <= 0 {
 		// CLIオプションで指定がない場合、または無効な値が指定された場合の安全なデフォルト値。
-		// cmd/main.go の maxScraperParallel のデフォルト値と一致させています。
 		maxConcurrency = DefaultMaxConcurrency
 	}
 	return &ParallelScraper{
@@ -76,8 +75,10 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 			var extractErr error
 			if err != nil {
 				extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
-			} else if content == "" || !hasBodyFound {
-				// 抽出ロジックの判定結果 (本文が見つからなかった場合)
+			} else if !hasBodyFound {
+				// NOTE: go-web-exact/v2 の Extract メソッドは、本文が見つかった (hasBodyFound=true) 場合、
+				// content が空文字列になることはないと想定しています。
+				// そのため、本文が見つからなかった場合のみを抽出失敗と判断します。
 				extractErr = fmt.Errorf("URL %s から有効な本文を抽出できませんでした", u)
 			}
 

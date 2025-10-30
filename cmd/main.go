@@ -12,24 +12,26 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
-	"github.com/shouni/go-web-exact/pkg/httpclient"
-	webextractor "github.com/shouni/go-web-exact/pkg/web"
+	"github.com/shouni/go-web-exact/v2/pkg/client"
+	"github.com/shouni/go-web-exact/v2/pkg/extract"
+
 	"github.com/spf13/cobra"
 )
 
 // ----------------------------------------------------------------
-// 定数定義 (マジックナンバーの排除)
+// 定数定義 (マジックナンバー解消とコメント復元)
 // ----------------------------------------------------------------
 
 const (
 	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
+	// サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
 	initialScrapeDelay = 2 * time.Second
-	retryScrapeDelay   = 5 * time.Second // 修正: コメント削除
+	retryScrapeDelay   = 5 * time.Second
 
-	// CLI/Appの実行ステップを表現するための定数
-	phaseURLs    = "URL生成フェーズ"
-	phaseContent = "コンテンツ取得フェーズ"
-	phaseCleanUp = "AIクリーンアップフェーズ"
+	phaseURLs             = "URL生成フェーズ"
+	phaseContent          = "コンテンツ取得フェーズ"
+	phaseCleanUp          = "AIクリーンアップフェーズ"
+	defaultHTTPMaxRetries = 2
 )
 
 // グローバル変数群 (CLIオプションの値を一時的に保持)
@@ -49,7 +51,7 @@ type cmdOptions struct {
 }
 
 // ----------------------------------------------------------------
-// App構造体の導入 (ビジネスロジックの格納)
+// App構造体の導入
 // ----------------------------------------------------------------
 
 // App はアプリケーションの実行に必要なすべてのロジックをカプセル化します。
@@ -64,20 +66,17 @@ func NewApp(opts cmdOptions) *App {
 
 // Execute はアプリケーションの主要な処理フローを実行します。
 func (a *App) Execute(ctx context.Context) error {
-	// 1. URLの読み込みとバリデーション
-	urls, err := a.generateURLs() // 修正: Appメソッドを呼び出し
+	urls, err := a.generateURLs()
 	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseURLs, err)
 	}
 	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
 
-	// 2. Webコンテンツの取得とリトライ
 	successfulResults, err := a.generateContents(ctx, urls)
 	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseContent, err)
 	}
 
-	// 3. AIクリーンアップと出力
 	if err := a.generateCleanedOutput(ctx, successfulResults); err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
@@ -114,7 +113,6 @@ var rootCmd = &cobra.Command{
 
 // runMainはCLIのメインロジックを実行します。Appを初期化し、実行を委譲します。
 func runMain(cmd *cobra.Command, args []string) error {
-	// CLIオプションを構造体に集約
 	opts := cmdOptions{
 		LLMAPIKey:          llmAPIKey,
 		LLMTimeout:         llmTimeout,
@@ -123,11 +121,9 @@ func runMain(cmd *cobra.Command, args []string) error {
 		MaxScraperParallel: maxScraperParallel,
 	}
 
-	// LLM処理のコンテキストタイムアウトをフラグ値で設定
 	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
 	defer cancel()
 
-	// App構造体を初期化し、実行ロジックを委譲する
 	app := NewApp(opts)
 	return app.Execute(ctx)
 }
@@ -137,7 +133,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 // ----------------------------------------------------------------
 
 // generateURLsはファイルからURLを読み込み、基本的なバリデーションを実行します。
-// 修正: Appのメソッドとして定義し、Optionsからファイルパスを取得するように変更
 func (a *App) generateURLs() ([]string, error) {
 	if a.Options.URLFile == "" {
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
@@ -159,8 +154,22 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. 依存性の初期化 (Optionsから設定値を取得)
-	httpClient := httpclient.New(a.Options.ScraperTimeout)
-	extractor := webextractor.NewExtractor(httpClient)
+	clientOptions := []client.ClientOption{
+		// ⬇️ 修正: 定数 defaultHTTPMaxRetries を使用してマジックナンバーを解消
+		client.WithMaxRetries(defaultHTTPMaxRetries),
+	}
+	// go-web-exact/v2/pkg/client を使用してクライアントを初期化 (リトライ機能内蔵)
+	webClient := client.New(a.Options.ScraperTimeout, clientOptions...)
+
+	// 新しいクライアント (Fetcher) を Extractor に注入
+	extractor, err := extract.NewExtractor(webClient)
+	if err != nil {
+		// NOTE: webClient は client.New() から常に有効なインスタンスが返されるため、
+		// ここでエラーが発生する場合は extract パッケージ内部の初期化失敗が考えられます。
+		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
+	}
+
+	// 並列スクレイパーを初期化
 	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
 
 	// 2. 並列実行
@@ -168,7 +177,7 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 
 	// 3. 無条件遅延
 	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
-	time.Sleep(initialScrapeDelay) // NOTE: サーバー負荷を考慮した固定遅延。将来的に動的/ランダム遅延へ改善を検討。
+	time.Sleep(initialScrapeDelay)
 
 	// 4. 結果の分類
 	successfulResults, failedURLs := classifyResults(results)
@@ -210,7 +219,6 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []typ
 	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	// APIキーは App.Options から取得
 	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
@@ -283,7 +291,7 @@ func formatErrorLog(err error) string {
 }
 
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
-func processFailedURLs(ctx context.Context, failedURLs []string, extractor *webextractor.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
+func processFailedURLs(ctx context.Context, failedURLs []string, extractor *extract.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
 	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
 	time.Sleep(retryDelay)
 
