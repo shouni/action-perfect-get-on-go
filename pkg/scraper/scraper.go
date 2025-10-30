@@ -6,33 +6,27 @@ import (
 	"sync"
 
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
-	webextractor "github.com/shouni/go-web-exact/pkg/web"
+	"github.com/shouni/go-web-exact/v2/pkg/extract"
 )
 
 // DefaultMaxConcurrency は、並列スクレイピングのデフォルトの最大同時実行数を定義します。
-// CLIオプションで指定がない場合、または無効な値が指定された場合に使用されます。
 const DefaultMaxConcurrency = 10
 
-// Scraper はWebコンテンツの抽出機能を提供するインターフェースです。
+// Scraper はWebコンテンツの抽出機能を提供するインターフェースです。（変更なし）
 type Scraper interface {
 	ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult
 }
 
 // ParallelScraper は Scraper インターフェースを実装する並列処理構造体です。
-// httpclient を直接知る必要はなく、webextractor.Extractor に依存します。
 type ParallelScraper struct {
-	extractor *webextractor.Extractor
+	extractor *extract.Extractor
 	// 最大並列数を保持するフィールド
 	maxConcurrency int
 }
 
 // NewParallelScraper は ParallelScraper を初期化します。
-// 依存性として Extractor と、最大同時実行数を受け取ります。
-// これにより、テスト時にモックの Extractor を注入できるようになります。
-func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *ParallelScraper {
+func NewParallelScraper(extractor *extract.Extractor, maxConcurrency int) *ParallelScraper {
 	if maxConcurrency <= 0 {
-		// CLIオプションで指定がない場合、または無効な値が指定された場合の安全なデフォルト値。
-		// cmd/main.go の maxScraperParallel のデフォルト値と一致させています。
 		maxConcurrency = DefaultMaxConcurrency
 	}
 	return &ParallelScraper{
@@ -41,24 +35,18 @@ func NewParallelScraper(extractor *webextractor.Extractor, maxConcurrency int) *
 	}
 }
 
-// ScrapeInParallel は Scraper インターフェースのメソッドを実装します。
+// ScrapeInParallel は Scraper インターフェースのメソッドを実装します。（ロジックは変更なし）
 func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) []types.URLResult {
 	var wg sync.WaitGroup
 	resultsChan := make(chan types.URLResult, len(urls))
-
-	// バッファ付きチャネルをセマフォとして使用し、同時実行数を制限する
 	semaphore := make(chan struct{}, s.maxConcurrency)
 
 	for _, url := range urls {
 		wg.Add(1)
-
-		// リソース（スロット）の確保。maxConcurrency件実行中の場合はここでブロックして待機。
 		semaphore <- struct{}{}
 
 		go func(u string) {
 			defer wg.Done()
-
-			// 処理完了後にリソース（スロット）を解放。他の待機中のGoroutineが実行可能になる。
 			defer func() { <-semaphore }()
 
 			select {
@@ -77,7 +65,6 @@ func (s *ParallelScraper) ScrapeInParallel(ctx context.Context, urls []string) [
 			if err != nil {
 				extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
 			} else if content == "" || !hasBodyFound {
-				// 抽出ロジックの判定結果 (本文が見つからなかった場合)
 				extractErr = fmt.Errorf("URL %s から有効な本文を抽出できませんでした", u)
 			}
 
