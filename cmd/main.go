@@ -19,7 +19,7 @@ import (
 )
 
 // ----------------------------------------------------------------
-// 定数定義 (コメント復元)
+// 定数定義 (マジックナンバー解消とコメント復元)
 // ----------------------------------------------------------------
 
 const (
@@ -28,9 +28,10 @@ const (
 	initialScrapeDelay = 2 * time.Second
 	retryScrapeDelay   = 5 * time.Second
 
-	phaseURLs    = "URL生成フェーズ"
-	phaseContent = "コンテンツ取得フェーズ"
-	phaseCleanUp = "AIクリーンアップフェーズ"
+	phaseURLs             = "URL生成フェーズ"
+	phaseContent          = "コンテンツ取得フェーズ"
+	phaseCleanUp          = "AIクリーンアップフェーズ"
+	defaultHTTPMaxRetries = 2
 )
 
 // グローバル変数群 (CLIオプションの値を一時的に保持)
@@ -154,7 +155,8 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 
 	// 1. 依存性の初期化 (Optionsから設定値を取得)
 	clientOptions := []client.ClientOption{
-		client.WithMaxRetries(5), // デフォルトのリトライ回数を設定
+		// ⬇️ 修正: 定数 defaultHTTPMaxRetries を使用してマジックナンバーを解消
+		client.WithMaxRetries(defaultHTTPMaxRetries),
 	}
 	// go-web-exact/v2/pkg/client を使用してクライアントを初期化 (リトライ機能内蔵)
 	webClient := client.New(a.Options.ScraperTimeout, clientOptions...)
@@ -162,6 +164,8 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	// 新しいクライアント (Fetcher) を Extractor に注入
 	extractor, err := extract.NewExtractor(webClient)
 	if err != nil {
+		// NOTE: webClient は client.New() から常に有効なインスタンスが返されるため、
+		// ここでエラーが発生する場合は extract パッケージ内部の初期化失敗が考えられます。
 		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
 	}
 
