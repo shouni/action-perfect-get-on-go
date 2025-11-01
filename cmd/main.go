@@ -15,7 +15,7 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
 	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 	"github.com/shouni/go-cli-base"
-	"github.com/shouni/go-web-exact/v2/pkg/client"
+	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
 )
 
@@ -114,7 +114,6 @@ func main() {
 
 // runMainLogicはCLIのメインロジックを実行し、フラグをAppに渡します。
 func runMainLogic(cmd *cobra.Command, args []string) error {
-	// ⬇️ 修正: フラグ値取得時のエラーハンドリングを追加し、堅牢化
 	llmTimeout, err := cmd.Flags().GetDuration("llm-timeout")
 	if err != nil {
 		return fmt.Errorf("failed to get llm-timeout flag: %w", err)
@@ -178,10 +177,10 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. 依存性の初期化 (Optionsから設定値を取得)
-	clientOptions := []client.ClientOption{
-		client.WithMaxRetries(defaultHTTPMaxRetries),
+	clientOptions := []httpkit.ClientOption{
+		httpkit.WithMaxRetries(defaultHTTPMaxRetries),
 	}
-	webClient := client.New(a.Options.ScraperTimeout, clientOptions...)
+	webClient := httpkit.New(a.Options.ScraperTimeout, clientOptions...)
 
 	// 新しいクライアント (Fetcher) を Extractor に注入
 	extractor, err := extract.NewExtractor(webClient)
