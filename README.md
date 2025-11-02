@@ -109,17 +109,17 @@ https://example.com/page-c/specification
 
 ### 2\. 実行コマンド形式
 
-処理を実行するには、**必ず** `--url-file` または `-f` フラグを使用して有効なファイルパスを指定する必要があります。URLを直接引数として渡す形式はサポートされていません。
+処理を実行するには、**必ず** `run` サブコマンドと `--url-file` または `-f` フラグを使用して有効なファイルパスを指定する必要があります。URLを直接引数として渡す形式はサポートされていません。
 
 ```bash
 # 最小実行形式 (環境変数にAPIキーが設定されている場合)
-./bin/llm_cleaner -f ./urls.txt
+./bin/llm_cleaner run -f ./urls.txt
 
 # 推奨実行形式 (APIキーとカスタムタイムアウト、並列数を指定)
-./bin/llm_cleaner -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m -p 5
+./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m -p 5
 
 # 並列数をデフォルトの10のまま実行する場合
-./bin/llm_cleaner -k "YOUR_API_KEY" -f ./urls.txt
+./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt
 ```
 
 ### 🗃️ 処理の流れ

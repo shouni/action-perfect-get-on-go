@@ -4,9 +4,9 @@ go 1.25
 
 require (
 	github.com/shouni/go-ai-client/v2 v2.0.2
-	github.com/shouni/go-cli-base v1.0.1
-	github.com/shouni/go-http-kit v1.0.2
-	github.com/shouni/go-web-exact/v2 v2.0.3
+	github.com/shouni/go-cli-base v1.0.4
+	github.com/shouni/go-http-kit v1.0.3
+	github.com/shouni/go-web-exact/v2 v2.0.5
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -18,6 +18,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/forPelevin/gomoji v1.4.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
@@ -25,8 +26,9 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/shouni/go-utils v1.0.3 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/shouni/go-utils v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/net v0.46.0 // indirect

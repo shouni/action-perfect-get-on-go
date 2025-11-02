@@ -109,7 +109,9 @@ func init() {
 }
 
 func main() {
-	clibase.Execute("action-perfect-get-on-go", runCmd)
+	// clibase の新しいAPIシグネチャ (string, CustomFlagFunc, CustomPreRunEFunc, ...*cobra.Command) に合わせるため、
+	// 2つのnil (CustomFlagFunc, CustomPreRunEFunc) を追加します。
+	clibase.Execute("action-perfect-get-on-go", nil, nil, runCmd)
 }
 
 // runMainLogicはCLIのメインロジックを実行し、フラグをAppに渡します。
