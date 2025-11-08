@@ -1,17 +1,7 @@
-https://github.com/shouni/act-feed-clean-go
 https://github.com/shouni/action-perfect-get-on-go
-https://github.com/shouni/action-rag-gateway-go
-https://github.com/shouni/git-gemini-clicker
 https://github.com/shouni/git-gemini-reviewer-go
-https://github.com/shouni/go-ai-client
-https://github.com/shouni/go-cli-base
 https://github.com/shouni/go-http-kit
-https://github.com/shouni/go-light-api
 https://github.com/shouni/go-notifier
-https://github.com/shouni/go-utils
-https://github.com/shouni/go-voicevox
-https://github.com/shouni/go-web-exact
 https://github.com/shouni/prompter-live-go
-https://github.com/shouni/prototypus-ai
 https://github.com/shouni/prototypus-ai-doc-go
 https://github.com/shouni/web-text-pipe-go
