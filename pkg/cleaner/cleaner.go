@@ -23,6 +23,15 @@ const DefaultSeparator = "\n\n"
 const MaxSegmentChars = 400000
 
 // ----------------------------------------------------------------
+// LLM応答マーカーの定数
+// ----------------------------------------------------------------
+const (
+	// FinalStartMarker は Reduce プロンプトで定義された最終出力開始マーカーです。
+	FinalStartMarker = "<FINAL_START>"
+	FinalEndMarker   = "<FINAL_END>"
+)
+
+// ----------------------------------------------------------------
 // Cleaner 構造体とコンストラクタの導入
 // ----------------------------------------------------------------
 
@@ -32,7 +41,8 @@ type Cleaner struct {
 	reduceBuilder *prompts.PromptBuilder
 }
 
-// NewCleaner は新しいCleanerインスタンスを作成し、PromptBuilderを一度だけ初期化します。
+// NewCleaner は新しい Cleaner インスタンスを作成し、PromptBuilderを一度だけ初期化します。
+// 外部との整合性を保つため、引数なしに戻します。
 func NewCleaner() (*Cleaner, error) {
 	// テンプレートパースはここで一度だけ行い、失敗した場合はエラーを返す
 	mapBuilder := prompts.NewMapPromptBuilder()
@@ -74,8 +84,9 @@ func CombineContents(results []extTypes.URLResult) string {
 	return builder.String()
 }
 
-// CleanAndStructureText は、Cleanerメソッドとして再定義
-func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string) (string, error) {
+// CleanAndStructureText は、MapReduce処理を実行し、最終的なクリーンアップと構造化を行います。
+// sourceURLs が Reduce プロンプトに直接渡され、最終文書のメタ情報として使用されます。
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) { // ★ sourceURLs を引数に追加
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
@@ -107,7 +118,12 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	reduceData := prompts.ReduceTemplateData{CombinedText: finalCombinedText}
+	// ReduceTemplateData に SourceURLs を含める
+	reduceData := prompts.ReduceTemplateData{
+		CombinedText: finalCombinedText,
+		SourceURLs:   sourceURLs,
+	}
+
 	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
 	if err != nil {
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
@@ -118,12 +134,34 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
 	}
 
-	return finalResponse.Text, nil
+	// 6. 最終出力のクリーンアップ（マーカー削除）
+	cleanedText := cleanFinalOutput(finalResponse.Text)
+
+	return cleanedText, nil
 }
 
 // ----------------------------------------------------------------
 // ヘルパー関数群
 // ----------------------------------------------------------------
+
+// cleanFinalOutput は、LLMの応答から <FINAL_START> と <FINAL_END> マーカーを削除し、
+// マーカー間のクリーンなテキストを抽出します。
+func cleanFinalOutput(llmResponse string) string {
+	startIdx := strings.Index(llmResponse, FinalStartMarker)
+	endIdx := strings.Index(llmResponse, FinalEndMarker)
+
+	// マーカーが見つからない場合は、そのまま返す
+	if startIdx == -1 || endIdx == -1 || startIdx >= endIdx {
+		log.Println("⚠️ WARNING: LLM応答で <FINAL_START> または <FINAL_END> マーカーが見つかりませんでした。そのまま応答を返します。")
+		return strings.TrimSpace(llmResponse)
+	}
+
+	// <FINAL_START> の直後から <FINAL_END> の直前までを抽出
+	extracted := llmResponse[startIdx+len(FinalStartMarker) : endIdx]
+
+	// 前後の空白文字を削除して返す
+	return strings.TrimSpace(extracted)
+}
 
 // segmentText は、結合されたテキストを、安全な最大文字数を超えないように分割します。
 // 段落の区切りを優先して分割し、文脈の欠落を最小限に抑えます。
@@ -171,7 +209,7 @@ func segmentText(text string, maxChars int) []string {
 	return segments
 }
 
-// processSegmentsInParallel は Cleanerのメソッドとして再定義
+// processSegmentsInParallel は Mapフェーズのログ出力を最小化
 func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
 	var wg sync.WaitGroup
 	resultsChan := make(chan struct {
@@ -196,6 +234,8 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 				return
 			}
 
+			// Mapプロンプトのプレビューは省略（冗長なため）
+
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
@@ -206,6 +246,8 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 				}{summary: "", err: fmt.Errorf("セグメント %d 処理失敗: %w", index+1, err)}
 				return
 			}
+
+			// Map Intermediate Summary の全内容は省略（冗長なため）
 
 			resultsChan <- struct {
 				summary string
@@ -226,4 +268,13 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 	}
 
 	return summaries, nil
+}
+
+// ExtractURLs は、成功した結果からURLのリストのみを抽出します。
+func ExtractURLs(results []extTypes.URLResult) []string {
+	urls := make([]string, len(results))
+	for i, res := range results {
+		urls[i] = res.URL
+	}
+	return urls
 }

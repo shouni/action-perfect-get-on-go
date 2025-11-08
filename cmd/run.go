@@ -16,6 +16,9 @@ var runCmd = &cobra.Command{
 	Long: `
 Webコンテンツの取得とAIクリーンアップを実行します。
 実行には、-fまたは--url-fileオプションでURLリストファイルを指定してください。
+
+-oまたは--outputオプションで出力ファイルパスを指定すると、ファイルに書き込まれ、
+標準出力には冒頭のプレビューが表示されます。指定しない場合は標準出力に出力されます。
 `,
 	RunE: runMainLogic,
 }
@@ -27,6 +30,7 @@ func init() {
 	runCmd.Flags().DurationP("scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	runCmd.Flags().StringP("api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
+	runCmd.Flags().StringP("output", "o", "./output/reduce_final.txt", "最終的な構造化Markdownを出力するファイルパス (省略時は標準出力)")
 	runCmd.Flags().IntP("parallel", "p", 5, "Webスクレイピングの最大同時並列リクエスト数")
 	runCmd.MarkFlagRequired("url-file")
 }
@@ -50,6 +54,10 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("url-fileフラグの取得に失敗しました: %w", err)
 	}
+	outputFilePath, err := cmd.Flags().GetString("output")
+	if err != nil {
+		return fmt.Errorf("outputフラグの取得に失敗しました: %w", err)
+	}
 	maxScraperParallel, err := cmd.Flags().GetInt("parallel")
 	if err != nil {
 		return fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
@@ -60,12 +68,11 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		LLMTimeout:         llmTimeout,
 		ScraperTimeout:     scraperTimeout,
 		URLFile:            urlFile,
+		OutputFilePath:     outputFilePath,
 		MaxScraperParallel: maxScraperParallel,
 	}
 
 	// グローバルタイムアウト設定
-	// runCmdのContext()は既にキャンセル可能なContextを持っている可能性がありますが、
-	// ここでLLMTimeoutに基づくタイムアウトを設定し直します。
 	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
 	defer cancel()
 

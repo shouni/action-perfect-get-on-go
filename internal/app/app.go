@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
+	"github.com/shouni/action-perfect-get-on-go/pkg/iohandler"
 
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
@@ -18,7 +19,7 @@ import (
 )
 
 // ----------------------------------------------------------------
-// 定数定義 (復活)
+// 定数定義
 // ----------------------------------------------------------------
 
 const (
@@ -43,6 +44,7 @@ type CmdOptions struct {
 	LLMTimeout         time.Duration
 	ScraperTimeout     time.Duration
 	URLFile            string
+	OutputFilePath     string
 	MaxScraperParallel int
 }
 
@@ -73,10 +75,16 @@ func (a *App) Execute(ctx context.Context) error {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseContent, err)
 	}
 
-	// generateCleanedOutputを呼び出す
-	if err := a.generateCleanedOutput(ctx, successfulResults); err != nil {
+	// generateCleanedOutputを呼び出し、クリーンアップされたテキストを取得
+	cleanedText, err := a.generateCleanedOutput(ctx, successfulResults)
+	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
+
+	if err := iohandler.WriteOutputString(a.Options.OutputFilePath, cleanedText); err != nil {
+		return fmt.Errorf("最終結果の出力に失敗しました: %w", err)
+	}
+	log.Println("INFO: 処理が正常に完了しました。")
 
 	return nil
 }
@@ -151,41 +159,34 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]extTypes.U
 	return successfulResults, nil
 }
 
-// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
-// LLM依存のロジックは cleaner.Cleaner に移譲します。
-func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) error {
+// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化します。
+func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) (string, error) {
 	// Cleanerの初期化
 	c, err := cleaner.NewCleaner()
 	if err != nil {
-		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+		return "", fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
 	// データ結合フェーズ
 	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
 	combinedText := cleaner.CombineContents(successfulResults)
-	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
+	sourceURLs := cleaner.ExtractURLs(successfulResults)
+	numURLs := len(sourceURLs)
+	log.Printf("INFO: 結合されたテキストの長さ: %dバイト (ソースURL数: %d)", len(combinedText), numURLs)
 
 	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	// cleaner.Cleanerのメソッドを呼び出す
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey, sourceURLs)
 	if err != nil {
-		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
+		return "", fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
 
-	// 最終結果の出力
-	fmt.Println("\n===============================================")
-	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
-	fmt.Println("===============================================")
-	fmt.Println(cleanedText)
-	fmt.Println("===============================================")
-
-	return nil
+	return cleanedText, nil
 }
 
 // ----------------------------------------------------------------
-// ヘルパー関数 (復活)
+// ヘルパー関数 (iohandlerと競合するため、ReadInput/WriteOutputは削除)
 // ----------------------------------------------------------------
 
 // readURLsFromFileは指定されたファイルからURLを読み込みます。
