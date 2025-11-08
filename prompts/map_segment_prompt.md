@@ -17,3 +17,6 @@
 <CLEANUP_START>
 ここにクリーンアップされたMarkdownテキストを出力
 <CLEANUP_END>
+**重要:** 上記の **<CLEANUP_END>** マーカーの直後に、**元の記事の URL を以下の形式で厳密に追記**してください。
+
+[元記事URL: {{.SourceURL}}]
