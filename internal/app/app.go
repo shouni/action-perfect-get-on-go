@@ -100,7 +100,10 @@ func (a *App) generateURLs() ([]string, error) {
 func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 	// 1. HTTP クライアント (Fetcher)
-	fetcher := httpkit.New(a.Options.ScraperTimeout)
+	clientOptions := []httpkit.ClientOption{
+		httpkit.WithMaxRetries(2),
+	}
+	fetcher := httpkit.New(a.Options.ScraperTimeout, clientOptions...)
 	// 2. ScraperExecutor の具体的な実装
 	extractor, err := extract.NewExtractor(fetcher)
 	if err != nil {
