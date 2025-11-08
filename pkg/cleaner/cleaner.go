@@ -217,8 +217,7 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		err     error
 	}, len(allSegments))
 
-	// 並列数を制御するセマフォ (Goroutine数の上限)
-	sem := make(chan struct{}, c.concurrency)
+	sem := make(chan struct{}, c.concurrency) // 並列処理セマフォ
 
 	// time.NewTicker を使用し、deferで確実に停止する
 	// LLM APIのコール間隔を制御するレートリミッター
