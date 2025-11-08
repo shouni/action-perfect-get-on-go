@@ -26,33 +26,41 @@ func WriteOutputString(filename string, content string) error {
 		}
 		fmt.Fprintf(os.Stderr, "\n--- 最終生成完了 ---\nファイルに書き込みました: %s\n", filename)
 
-		// 3. 標準出力にファイルの冒頭10行を表示
-		lines := strings.Split(content, "\n")
-
-		fmt.Fprintln(os.Stdout, "\n--- ファイル出力プレビュー (標準出力) ---")
-
-		previewContent := ""
-		if len(lines) > 0 {
-			// 最初の10行（または行数全て）を抽出
-			end := previewLines
-			if len(lines) < previewLines {
-				end = len(lines)
-			}
-			previewContent = strings.Join(lines[:end], "\n")
-		}
-
-		fmt.Fprintln(os.Stdout, previewContent)
-		if len(lines) > previewLines {
-			fmt.Fprintln(os.Stdout, "...")
-		}
-		fmt.Fprintln(os.Stdout, "------------------------------------------")
-
 		return nil
 	}
 
-	fmt.Fprintln(os.Stderr, "\n--- スクリプト生成結果 ---")
-	// スクリプト本体は標準出力に出力 (パイプ処理を考慮)
-	fmt.Fprintln(os.Stdout, content)
+	err := outputPreview(content)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// outputPreview displays the first 10 lines of the given content to standard output as a preview.
+// It adds a separator before and after the preview and appends ellipsis if there are more lines than displayed.
+// Returns an error if any issue occurs during the process.
+func outputPreview(content string) error {
+	// 3. 標準出力にファイルの冒頭10行を表示
+	lines := strings.Split(content, "\n")
+
+	fmt.Fprintln(os.Stdout, "\n--- ファイル出力プレビュー (標準出力) ---")
+
+	previewContent := ""
+	if len(lines) > 0 {
+		// 最初の10行（または行数全て）を抽出
+		end := previewLines
+		if len(lines) < previewLines {
+			end = len(lines)
+		}
+		previewContent = strings.Join(lines[:end], "\n")
+	}
+
+	fmt.Fprintln(os.Stdout, previewContent)
+	if len(lines) > previewLines {
+		fmt.Fprintln(os.Stdout, "...")
+	}
+	fmt.Fprintln(os.Stdout, "------------------------------------------")
 
 	return nil
 }

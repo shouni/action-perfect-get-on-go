@@ -104,7 +104,7 @@ func CombineContents(results []extTypes.URLResult) string {
 
 // CleanAndStructureText は、MapReduce処理を実行し、最終的なクリーンアップと構造化を行います。
 // sourceURLs が Reduce プロンプトに直接渡され、最終文書のメタ情報として使用されます。
-func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) { // ★ sourceURLs を引数に追加
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) {
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
