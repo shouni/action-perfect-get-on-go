@@ -12,7 +12,6 @@ const previewLines = 10
 
 // WriteOutputString は、ファイルまたは標準出力に内容を書き出します。
 // ファイル名が指定された場合、ディレクトリが存在しなければ作成し、ファイルに書き込みます。
-// その後、ファイルの冒頭10行を標準出力に出力します。
 func WriteOutputString(filename string, content string) error {
 	if filename != "" {
 		// 1. ディレクトリの作成 (存在しない場合は再帰的に作成)
@@ -38,9 +37,7 @@ func WriteOutputString(filename string, content string) error {
 	return nil
 }
 
-// outputPreview displays the first 10 lines of the given content to standard output as a preview.
-// It adds a separator before and after the preview and appends ellipsis if there are more lines than displayed.
-// Returns an error if any issue occurs during the process.
+// outputPreview プレビューを標準出力する
 func outputPreview(content string) error {
 	// 3. 標準出力にファイルの冒頭10行を表示
 	lines := strings.Split(content, "\n")
