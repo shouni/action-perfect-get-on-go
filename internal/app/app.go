@@ -170,13 +170,14 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []ext
 	// データ結合フェーズ
 	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
 	combinedText := cleaner.CombineContents(successfulResults)
-	log.Printf("INFO: 結合されたテキストの長さ: %dバイト", len(combinedText))
+	sourceURLs := cleaner.ExtractURLs(successfulResults)
+	numURLs := len(sourceURLs)
+	log.Printf("INFO: 結合されたテキストの長さ: %dバイト (ソースURL数: %d)", len(combinedText), numURLs)
 
 	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	// cleaner.Cleanerのメソッドを呼び出す
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
+	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey, sourceURLs)
 	if err != nil {
 		return "", fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
