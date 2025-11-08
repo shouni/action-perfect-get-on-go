@@ -73,10 +73,14 @@ func (a *App) Execute(ctx context.Context) error {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseContent, err)
 	}
 
-	// generateCleanedOutputを呼び出す
-	if err := a.generateCleanedOutput(ctx, successfulResults); err != nil {
+	// generateCleanedOutputを呼び出し、クリーンアップされたテキストを取得
+	cleanedText, err := a.generateCleanedOutput(ctx, successfulResults)
+	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
+
+	// 標準出力への出力ロジックを分離したメソッドを呼び出し
+	a.printFinalOutput(cleanedText)
 
 	return nil
 }
@@ -151,13 +155,13 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]extTypes.U
 	return successfulResults, nil
 }
 
-// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
-// LLM依存のロジックは cleaner.Cleaner に移譲します。
-func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) error {
+// generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化します。
+// (修正) 最終出力は行わず、クリーンアップされたテキストを返します。
+func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) (string, error) {
 	// Cleanerの初期化
 	c, err := cleaner.NewCleaner()
 	if err != nil {
-		return fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+		return "", fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
 	// データ結合フェーズ
@@ -171,17 +175,20 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []ext
 	// cleaner.Cleanerのメソッドを呼び出す
 	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey)
 	if err != nil {
-		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
+		return "", fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
 
-	// 最終結果の出力
+	return cleanedText, nil
+}
+
+// printFinalOutputは、LLMでクリーンアップされた最終結果を標準出力に出力します。
+// (新規追加) 出力に関する責務を分離しました。
+func (a *App) printFinalOutput(cleanedText string) {
 	fmt.Println("\n===============================================")
 	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
 	fmt.Println("===============================================")
 	fmt.Println(cleanedText)
 	fmt.Println("===============================================")
-
-	return nil
 }
 
 // ----------------------------------------------------------------
