@@ -220,9 +220,11 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 	// 並列数を制御するセマフォ (Goroutine数の上限)
 	sem := make(chan struct{}, c.concurrency)
 
-	//  LLM APIのコール間隔を制御するレートリミッター
-	// DefaultLLMRateLimit ごとにチャネルに値が送信される
-	rateLimiter := time.Tick(DefaultLLMRateLimit)
+	// time.NewTicker を使用し、deferで確実に停止する
+	// LLM APIのコール間隔を制御するレートリミッター
+	ticker := time.NewTicker(DefaultLLMRateLimit)
+	defer ticker.Stop() // 非常に重要: 関数終了時にタイマーのGoroutineリークを防ぐ
+	rateLimiter := ticker.C
 
 	for i, seg := range allSegments {
 		sem <- struct{}{}
@@ -233,9 +235,15 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 			defer func() { <-sem }()
 			defer wg.Done()
 
-			// APIコール開始前に、レートリミッターからの受信を待つ
-			// これにより、Goroutineの実行は並列だが、APIコール自体は間隔が空けられる
-			<-rateLimiter
+			// レートリミットとコンテキストキャンセルを select で同時に監視
+			select {
+			case <-rateLimiter:
+				// レートリミット間隔が経過し、リクエストが許可された
+			case <-ctx.Done():
+				// コンテキストがキャンセルされた場合、このGoroutineを終了
+				log.Printf("INFO: セグメント %d の処理がコンテキストキャンセルにより中断されました (URL: %s)", index+1, s.URL)
+				return
+			}
 
 			mapData := prompts.MapTemplateData{
 				SegmentText: s.Text,
@@ -254,7 +262,8 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
-				// ... (エラーログ処理は省略)
+				// エラーログのコメントアウトを解除
+				log.Printf("❌ ERROR: セグメント %d の処理に失敗しました: %v (URL: %s)", index+1, err, s.URL)
 				resultsChan <- struct {
 					summary string
 					err     error
