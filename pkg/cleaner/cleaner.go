@@ -150,13 +150,6 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
 	}
 
-	// Reduceプロンプトの冒頭を常に表示
-	promptPreviewLength := 1000
-	if len(finalPrompt) < promptPreviewLength {
-		promptPreviewLength = len(finalPrompt)
-	}
-	log.Printf("DEBUG: Reduce Final Prompt プレビュー:\n---\n%s...\n-\n", finalPrompt[:promptPreviewLength])
-
 	finalResponse, err := client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
 	if err != nil {
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
