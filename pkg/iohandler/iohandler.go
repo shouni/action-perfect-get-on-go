@@ -37,7 +37,8 @@ func WriteOutputString(filename string, content string) error {
 	return nil
 }
 
-// outputPreview プレビューを標準出力する
+// outputPreview は、与えられた内容の冒頭10行を標準出力にプレビューとして表示します。
+// プレビューの前後には区切り線を追加し、表示行数を超える場合は省略記号を付加します。
 func outputPreview(content string) error {
 	// 3. 標準出力にファイルの冒頭10行を表示
 	lines := strings.Split(content, "\n")
