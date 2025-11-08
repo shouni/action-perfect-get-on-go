@@ -162,7 +162,7 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]extTypes.U
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化します。
 func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) (string, error) {
 	// Cleanerの初期化
-	c, err := cleaner.NewCleaner()
+	c, err := cleaner.NewCleaner(cleaner.DefaultMaxMapConcurrency)
 	if err != nil {
 		return "", fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}

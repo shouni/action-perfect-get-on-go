@@ -19,6 +19,8 @@ const DefaultSeparator = "\n\n"
 // トークン制限に十分なマージンを持たせた値です。
 const MaxSegmentChars = 400000
 
+const DefaultMaxMapConcurrency = 5
+
 // ----------------------------------------------------------------
 // LLM応答マーカーの定数
 // ----------------------------------------------------------------
@@ -46,11 +48,12 @@ type Segment struct {
 type Cleaner struct {
 	mapBuilder    *prompts.PromptBuilder
 	reduceBuilder *prompts.PromptBuilder
+	concurrency   int
 }
 
 // NewCleaner は新しい Cleaner インスタンスを作成し、PromptBuilderを一度だけ初期化します。
-// 外部との整合性を保つため、引数なしに戻します。
-func NewCleaner() (*Cleaner, error) {
+// concurrency: Mapフェーズで同時に実行するLLMリクエストの最大数
+func NewCleaner(concurrency int) (*Cleaner, error) {
 	// テンプレートパースはここで一度だけ行い、失敗した場合はエラーを返す
 	mapBuilder := prompts.NewMapPromptBuilder()
 	if err := mapBuilder.Err(); err != nil {
@@ -61,9 +64,16 @@ func NewCleaner() (*Cleaner, error) {
 		return nil, fmt.Errorf("failed to initialize reduce prompt builder: %w", err)
 	}
 
+	// 最小1並列は保証
+	if concurrency < 1 {
+		log.Printf("⚠️ WARNING: concurrencyが1未満に設定されています (%d)。1に設定します。", concurrency)
+		concurrency = 1
+	}
+
 	return &Cleaner{
 		mapBuilder:    mapBuilder,
 		reduceBuilder: reduceBuilder,
+		concurrency:   concurrency,
 	}, nil
 }
 
@@ -73,7 +83,6 @@ func NewCleaner() (*Cleaner, error) {
 
 // CleanAndStructureText は、MapReduce処理を実行し、最終的なクリーンアップと構造化を行います。
 func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.URLResult, apiKeyOverride string) (string, error) {
-
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
 	var err error
@@ -94,10 +103,7 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.
 		// URLResultのContentを個別にセグメント分割
 		segments := segmentText(res.Content, MaxSegmentChars)
 		for _, segText := range segments {
-			// segmentTextが強制分割した場合の検出ロジックを追加し、ここでURL付きログを出力
-			if len(segText) > MaxSegmentChars { // これはあくまで例であり、segmentTextの実装によっては検出方法が変わる可能性があります
-				log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割しました。（URL: %s）", MaxSegmentChars, res.URL)
-			}
+			// segmentTextが強制分割した場合の検出ロジックはsegmentText内に移動済み
 			allSegments = append(allSegments, Segment{Text: segText, URL: res.URL})
 		}
 	}
@@ -188,7 +194,7 @@ func segmentText(text string, maxChars int) []string {
 			splitIndex += separatorLen
 		} else {
 			// 安全な区切りが見つからない場合は、そのまま最大文字数で切り、警告を出す
-			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。（URL: %s）", maxChars)
+			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。", maxChars)
 			splitIndex = maxChars
 		}
 
@@ -207,10 +213,15 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		err     error
 	}, len(allSegments))
 
+	sem := make(chan struct{}, c.concurrency)
+
 	for i, seg := range allSegments {
+		sem <- struct{}{}
+
 		wg.Add(1)
 
 		go func(index int, s Segment) {
+			defer func() { <-sem }()
 			defer wg.Done()
 
 			mapData := prompts.MapTemplateData{
