@@ -13,8 +13,8 @@ import (
 
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
-	"github.com/shouni/go-web-exact/v2/pkg/scraper"
-	"github.com/shouni/go-web-exact/v2/pkg/types"
+	extScraper "github.com/shouni/go-web-exact/v2/pkg/scraper"
+	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
 // ----------------------------------------------------------------
@@ -97,7 +97,7 @@ func (a *App) generateURLs() ([]string, error) {
 }
 
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
-func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
+func (a *App) generateContents(ctx context.Context, urls []string) ([]extTypes.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
 	// 1. HTTP クライアント (Fetcher)
 	clientOptions := []httpkit.ClientOption{
@@ -109,7 +109,7 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 	if err != nil {
 		return nil, fmt.Errorf("Extractorの初期化エラー: %w", err)
 	}
-	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
+	s := extScraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
 	results := s.ScrapeInParallel(ctx, urls)
 
 	return results, nil
@@ -117,7 +117,7 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLR
 
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
 // LLM依存のロジックは cleaner.Cleaner に移譲します。
-func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []types.URLResult) error {
+func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) error {
 	// Cleanerの初期化
 	c, err := cleaner.NewCleaner()
 	if err != nil {
