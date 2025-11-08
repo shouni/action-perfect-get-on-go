@@ -2,6 +2,7 @@ package iohandler
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,7 @@ func WriteOutputString(filename string, content string) error {
 		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 			return fmt.Errorf("ファイルへの書き込みに失敗しました: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "\n--- 最終生成完了 ---\nファイルに書き込みました: %s\n", filename)
+		slog.Info("最終生成完了 - ファイルに書き込みました", slog.String("file", filename))
 
 		return nil
 	}
