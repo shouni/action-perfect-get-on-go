@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
 // ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
@@ -57,7 +57,7 @@ func NewCleaner() (*Cleaner, error) {
 // CombineContents は、成功した抽出結果の本文を効率的に結合します。
 // 各コンテンツの前には、ソースURL情報が付加され、LLMが識別できるようにします。
 // 最後の文書でなければ明確な区切り文字を追加します。
-func CombineContents(results []types.URLResult) string {
+func CombineContents(results []extTypes.URLResult) string {
 	var builder strings.Builder
 
 	for i, res := range results {
