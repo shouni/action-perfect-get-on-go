@@ -4,9 +4,9 @@ go 1.25
 
 require (
 	github.com/shouni/go-ai-client/v2 v2.0.2
-	github.com/shouni/go-cli-base v1.0.4
-	github.com/shouni/go-http-kit v1.0.3
-	github.com/shouni/go-web-exact/v2 v2.0.5
+	github.com/shouni/go-cli-base v1.0.5
+	github.com/shouni/go-http-kit v1.1.0
+	github.com/shouni/go-web-exact/v2 v2.0.10
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -27,7 +27,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/shouni/go-utils v1.0.5 // indirect
+	github.com/shouni/go-utils v1.0.8 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
