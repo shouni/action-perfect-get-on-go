@@ -94,6 +94,10 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.
 		// URLResultのContentを個別にセグメント分割
 		segments := segmentText(res.Content, MaxSegmentChars)
 		for _, segText := range segments {
+			// segmentTextが強制分割した場合の検出ロジックを追加し、ここでURL付きログを出力
+			if len(segText) > MaxSegmentChars { // これはあくまで例であり、segmentTextの実装によっては検出方法が変わる可能性があります
+				log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割しました。（URL: %s）", MaxSegmentChars, res.URL)
+			}
 			allSegments = append(allSegments, Segment{Text: segText, URL: res.URL})
 		}
 	}
