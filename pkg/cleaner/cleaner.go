@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shouni/action-perfect-get-on-go/prompts"
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
@@ -20,6 +21,9 @@ const DefaultSeparator = "\n\n"
 const MaxSegmentChars = 400000
 
 const DefaultMaxMapConcurrency = 5
+
+// DefaultLLMRateLimit 200msごとに1リクエストを許可 = 1秒あたり最大5リクエスト
+const DefaultLLMRateLimit = 200 * time.Millisecond
 
 // ----------------------------------------------------------------
 // LLM応答マーカーの定数
@@ -213,7 +217,12 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		err     error
 	}, len(allSegments))
 
+	// 並列数を制御するセマフォ (Goroutine数の上限)
 	sem := make(chan struct{}, c.concurrency)
+
+	//  LLM APIのコール間隔を制御するレートリミッター
+	// DefaultLLMRateLimit ごとにチャネルに値が送信される
+	rateLimiter := time.Tick(DefaultLLMRateLimit)
 
 	for i, seg := range allSegments {
 		sem <- struct{}{}
@@ -223,6 +232,10 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		go func(index int, s Segment) {
 			defer func() { <-sem }()
 			defer wg.Done()
+
+			// APIコール開始前に、レートリミッターからの受信を待つ
+			// これにより、Goroutineの実行は並列だが、APIコール自体は間隔が空けられる
+			<-rateLimiter
 
 			mapData := prompts.MapTemplateData{
 				SegmentText: s.Text,
@@ -241,7 +254,7 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
-				log.Printf("❌ ERROR: セグメント %d の処理に失敗しました: %v (URL: %s)", index+1, err, s.URL)
+				// ... (エラーログ処理は省略)
 				resultsChan <- struct {
 					summary string
 					err     error
