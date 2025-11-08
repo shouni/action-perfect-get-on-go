@@ -7,9 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shouni/action-perfect-get-on-go/pkg/types"
+	//	"github.com/shouni/action-perfect-get-on-go/pkg/types"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
 // ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。

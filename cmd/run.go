@@ -27,7 +27,7 @@ func init() {
 	runCmd.Flags().DurationP("scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	runCmd.Flags().StringP("api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
-	runCmd.Flags().IntP("parallel", "p", 10, "Webスクレイピングの最大同時並列リクエスト数")
+	runCmd.Flags().IntP("parallel", "p", 5, "Webスクレイピングの最大同時並列リクエスト数")
 	runCmd.MarkFlagRequired("url-file")
 }
 

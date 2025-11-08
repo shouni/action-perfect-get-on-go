@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
-	"github.com/shouni/action-perfect-get-on-go/pkg/scraper"
-	"github.com/shouni/action-perfect-get-on-go/pkg/types"
+
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
+	"github.com/shouni/go-web-exact/v2/pkg/scraper"
+	"github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
 // ----------------------------------------------------------------
@@ -21,15 +22,9 @@ import (
 // ----------------------------------------------------------------
 
 const (
-	// initialScrapeDelayは並列スクレイピング後の無条件待機時間です。
-	initialScrapeDelay = 2 * time.Second
-	retryScrapeDelay   = 5 * time.Second
-
 	phaseURLs    = "URL生成フェーズ"
 	phaseContent = "コンテンツ取得フェーズ"
 	phaseCleanUp = "AIクリーンアップフェーズ"
-
-	defaultHTTPMaxRetries = 2
 )
 
 // ----------------------------------------------------------------
@@ -104,50 +99,17 @@ func (a *App) generateURLs() ([]string, error) {
 // generateContentsは、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 func (a *App) generateContents(ctx context.Context, urls []string) ([]types.URLResult, error) {
 	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
-
-	// 1. 依存性の初期化 (Optionsから設定値を取得)
-	clientOptions := []httpkit.ClientOption{
-		httpkit.WithMaxRetries(defaultHTTPMaxRetries),
-	}
-	webClient := httpkit.New(a.Options.ScraperTimeout, clientOptions...)
-
-	// 新しいクライアント (Fetcher) を Extractor に注入
-	extractor, err := extract.NewExtractor(webClient)
+	// 1. HTTP クライアント (Fetcher)
+	fetcher := httpkit.New(a.Options.ScraperTimeout)
+	// 2. ScraperExecutor の具体的な実装
+	extractor, err := extract.NewExtractor(fetcher)
 	if err != nil {
-		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
+		return nil, fmt.Errorf("Extractorの初期化エラー: %w", err)
 	}
-
 	s := scraper.NewParallelScraper(extractor, a.Options.MaxScraperParallel)
-
-	// 2. 並列実行
 	results := s.ScrapeInParallel(ctx, urls)
 
-	// 3. 無条件遅延
-	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", initialScrapeDelay)
-	time.Sleep(initialScrapeDelay)
-
-	// 4. 結果の分類
-	successfulResults, failedURLs := classifyResults(results)
-	initialSuccessfulCount := len(successfulResults)
-
-	// 5. 失敗URLのリトライ処理
-	if len(failedURLs) > 0 {
-		retriedSuccessfulResults, retryErr := processFailedURLs(ctx, failedURLs, extractor, retryScrapeDelay)
-		if retryErr != nil {
-			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
-		}
-		successfulResults = append(successfulResults, retriedSuccessfulResults...)
-	}
-
-	// 6. 最終チェックとログ
-	if len(successfulResults) == 0 {
-		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
-	}
-
-	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
-		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
-
-	return successfulResults, nil
+	return results, nil
 }
 
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化して出力します。
@@ -211,66 +173,4 @@ func readURLsFromFile(filePath string) ([]string, error) {
 	}
 
 	return urls, nil
-}
-
-// classifyResultsは並列抽出の結果を成功と失敗に分類します。
-func classifyResults(results []types.URLResult) (successfulResults []types.URLResult, failedURLs []string) {
-	for _, res := range results {
-		if res.Error != nil || res.Content == "" {
-			failedURLs = append(failedURLs, res.URL)
-		} else {
-			successfulResults = append(successfulResults, res)
-		}
-	}
-	return successfulResults, failedURLs
-}
-
-// formatErrorLogは、冗長なエラーメッセージ（HTMLボディなどを含むもの）をステータスコード情報のみに短縮します。
-func formatErrorLog(err error) string {
-	errMsg := err.Error()
-	if idx := strings.Index(errMsg, ", ボディ: <!"); idx != -1 {
-		errMsg = errMsg[:idx]
-	}
-
-	if idx := strings.LastIndex(errMsg, "最終エラー:"); idx != -1 {
-		return strings.TrimSpace(errMsg[idx:])
-	}
-
-	return errMsg
-}
-
-// processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
-func processFailedURLs(ctx context.Context, failedURLs []string, extractor *extract.Extractor, retryDelay time.Duration) ([]types.URLResult, error) {
-	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
-	time.Sleep(retryDelay)
-
-	var retriedSuccessfulResults []types.URLResult
-	log.Println("INFO: 失敗URLの順次リトライを開始します。")
-
-	for _, url := range failedURLs {
-		log.Printf("INFO: リトライ中: %s", url)
-
-		// タイムアウトを考慮してFetchAndExtractTextを呼び出す
-		content, hasBodyFound, err := extractor.FetchAndExtractText(ctx, url)
-
-		var extractErr error
-		if err != nil {
-			extractErr = fmt.Errorf("コンテンツの抽出に失敗しました: %w", err)
-		} else if content == "" || !hasBodyFound {
-			extractErr = fmt.Errorf("URL %s から有効な本文を抽出できませんでした", url)
-		}
-
-		if extractErr != nil {
-			formattedErr := formatErrorLog(extractErr)
-			log.Printf("ERROR: リトライでも %s の抽出に失敗しました: %s", url, formattedErr)
-		} else {
-			log.Printf("INFO: SUCCESS: %s の抽出がリトライで成功しました。", url)
-			retriedSuccessfulResults = append(retriedSuccessfulResults, types.URLResult{
-				URL:     url,
-				Content: content,
-				Error:   nil,
-			})
-		}
-	}
-	return retriedSuccessfulResults, nil
 }
