@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/pkg/app"
+	"github.com/shouni/action-perfect-get-on-go/internal/app"
 	"github.com/spf13/cobra"
 )
 
