@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shouni/action-perfect-get-on-go/prompts"
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
@@ -20,6 +21,9 @@ const DefaultSeparator = "\n\n"
 const MaxSegmentChars = 400000
 
 const DefaultMaxMapConcurrency = 5
+
+// DefaultLLMRateLimit 200msごとに1リクエストを許可 = 1秒あたり最大5リクエスト
+const DefaultLLMRateLimit = 200 * time.Millisecond
 
 // ----------------------------------------------------------------
 // LLM応答マーカーの定数
@@ -213,7 +217,13 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		err     error
 	}, len(allSegments))
 
-	sem := make(chan struct{}, c.concurrency)
+	sem := make(chan struct{}, c.concurrency) // 並列処理セマフォ
+
+	// time.NewTicker を使用し、deferで確実に停止する
+	// LLM APIのコール間隔を制御するレートリミッター
+	ticker := time.NewTicker(DefaultLLMRateLimit)
+	defer ticker.Stop() // 非常に重要: 関数終了時にタイマーのGoroutineリークを防ぐ
+	rateLimiter := ticker.C
 
 	for i, seg := range allSegments {
 		sem <- struct{}{}
@@ -223,6 +233,16 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 		go func(index int, s Segment) {
 			defer func() { <-sem }()
 			defer wg.Done()
+
+			// レートリミットとコンテキストキャンセルを select で同時に監視
+			select {
+			case <-rateLimiter:
+				// レートリミット間隔が経過し、リクエストが許可された
+			case <-ctx.Done():
+				// コンテキストがキャンセルされた場合、このGoroutineを終了
+				log.Printf("INFO: セグメント %d の処理がコンテキストキャンセルにより中断されました (URL: %s)", index+1, s.URL)
+				return
+			}
 
 			mapData := prompts.MapTemplateData{
 				SegmentText: s.Text,
@@ -241,6 +261,7 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
+				// エラーログのコメントアウトを解除
 				log.Printf("❌ ERROR: セグメント %d の処理に失敗しました: %v (URL: %s)", index+1, err, s.URL)
 				resultsChan <- struct {
 					summary string
