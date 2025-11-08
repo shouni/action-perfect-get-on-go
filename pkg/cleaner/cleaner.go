@@ -61,6 +61,24 @@ func NewCleaner() (*Cleaner, error) {
 }
 
 // ----------------------------------------------------------------
+// 新規追加: URLリストをMarkdown形式に整形するヘルパー関数
+// ----------------------------------------------------------------
+
+// formatURLsForTemplate は、URLの文字列スライスをMarkdownリスト形式に変換します。
+// * [URL] + 改行 の形式で結合し、テンプレートに渡せる単一の文字列を生成します。
+func formatURLsForTemplate(urls []string) string {
+	if len(urls) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, url := range urls {
+		// * [URL] 形式で整形し、改行を追加
+		b.WriteString(fmt.Sprintf("* %s\n", url))
+	}
+	return b.String()
+}
+
+// ----------------------------------------------------------------
 // 既存関数のリファクタリング
 // ----------------------------------------------------------------
 
@@ -86,7 +104,7 @@ func CombineContents(results []extTypes.URLResult) string {
 
 // CleanAndStructureText は、MapReduce処理を実行し、最終的なクリーンアップと構造化を行います。
 // sourceURLs が Reduce プロンプトに直接渡され、最終文書のメタ情報として使用されます。
-func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) { // ★ sourceURLs を引数に追加
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) {
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
@@ -115,13 +133,16 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 4. Reduceフェーズの準備：中間要約の結合
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
+	// URLリストをMarkdown文字列に整形
+	formattedURLs := formatURLsForTemplate(sourceURLs)
+
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	// ReduceTemplateData に SourceURLs を含める
+	// ReduceTemplateData に整形済み文字列を含める
 	reduceData := prompts.ReduceTemplateData{
 		CombinedText: finalCombinedText,
-		SourceURLs:   sourceURLs,
+		SourceURLs:   formattedURLs,
 	}
 
 	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
