@@ -24,7 +24,6 @@ type MapTemplateData struct {
 
 type ReduceTemplateData struct {
 	CombinedText string
-	//SourceURLs   string
 }
 
 // ----------------------------------------------------------------

@@ -30,7 +30,7 @@ func init() {
 	runCmd.Flags().DurationP("scraper-timeout", "s", 15*time.Second, "WebスクレイピングのHTTPタイムアウト時間")
 	runCmd.Flags().StringP("api-key", "k", "", "Gemini APIキー (環境変数 GEMINI_API_KEY が優先)")
 	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
-	runCmd.Flags().StringP("output", "o", "./output/reduce_final.txt", "最終的な構造化Markdownを出力するファイルパス (省略時は標準出力)")
+	runCmd.Flags().StringP("output", "o", "./output/output_reduce_final.md", "最終的な構造化Markdownを出力するファイルパス (省略時は標準出力)")
 	runCmd.Flags().IntP("parallel", "p", 5, "Webスクレイピングの最大同時並列リクエスト数")
 	runCmd.MarkFlagRequired("url-file")
 }
