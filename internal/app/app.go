@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shouni/action-perfect-get-on-go/pkg/cleaner"
+	"github.com/shouni/action-perfect-get-on-go/pkg/iohandler"
 
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
@@ -18,7 +19,7 @@ import (
 )
 
 // ----------------------------------------------------------------
-// 定数定義 (復活)
+// 定数定義
 // ----------------------------------------------------------------
 
 const (
@@ -43,6 +44,7 @@ type CmdOptions struct {
 	LLMTimeout         time.Duration
 	ScraperTimeout     time.Duration
 	URLFile            string
+	OutputFilePath     string
 	MaxScraperParallel int
 }
 
@@ -79,8 +81,10 @@ func (a *App) Execute(ctx context.Context) error {
 		return fmt.Errorf("%sでエラーが発生しました: %w", phaseCleanUp, err)
 	}
 
-	// 標準出力への出力ロジックを分離したメソッドを呼び出し
-	a.printFinalOutput(cleanedText)
+	if err := iohandler.WriteOutputString(a.Options.OutputFilePath, cleanedText); err != nil {
+		return fmt.Errorf("最終結果の出力に失敗しました: %w", err)
+	}
+	log.Println("INFO: 処理が正常に完了しました。")
 
 	return nil
 }
@@ -156,7 +160,6 @@ func (a *App) generateContents(ctx context.Context, urls []string) ([]extTypes.U
 }
 
 // generateCleanedOutputは、取得したコンテンツを結合し、LLMでクリーンアップ・構造化します。
-// (修正) 最終出力は行わず、クリーンアップされたテキストを返します。
 func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []extTypes.URLResult) (string, error) {
 	// Cleanerの初期化
 	c, err := cleaner.NewCleaner()
@@ -181,18 +184,8 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []ext
 	return cleanedText, nil
 }
 
-// printFinalOutputは、LLMでクリーンアップされた最終結果を標準出力に出力します。
-// (新規追加) 出力に関する責務を分離しました。
-func (a *App) printFinalOutput(cleanedText string) {
-	fmt.Println("\n===============================================")
-	fmt.Println("✅ PERFECT GET ON: LLMクリーンアップ後の最終出力データ:")
-	fmt.Println("===============================================")
-	fmt.Println(cleanedText)
-	fmt.Println("===============================================")
-}
-
 // ----------------------------------------------------------------
-// ヘルパー関数 (復活)
+// ヘルパー関数 (iohandlerと競合するため、ReadInput/WriteOutputは削除)
 // ----------------------------------------------------------------
 
 // readURLsFromFileは指定されたファイルからURLを読み込みます。

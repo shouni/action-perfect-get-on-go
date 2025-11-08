@@ -23,6 +23,16 @@ const DefaultSeparator = "\n\n"
 const MaxSegmentChars = 400000
 
 // ----------------------------------------------------------------
+// LLM応答マーカーの定数
+// ----------------------------------------------------------------
+const (
+	// FinalStartMarker は Reduce プロンプトで定義された最終出力開始マーカーです。
+	FinalStartMarker = "<FINAL_START>"
+	// FinalEndMarker は Reduce プロンプトで定義された最終出力終了マーカーです。
+	FinalEndMarker = "<FINAL_END>"
+)
+
+// ----------------------------------------------------------------
 // Cleaner 構造体とコンストラクタの導入
 // ----------------------------------------------------------------
 
@@ -118,12 +128,34 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
 	}
 
-	return finalResponse.Text, nil
+	// 6. 最終出力のクリーンアップ（マーカー削除）
+	cleanedText := cleanFinalOutput(finalResponse.Text)
+
+	return cleanedText, nil
 }
 
 // ----------------------------------------------------------------
 // ヘルパー関数群
 // ----------------------------------------------------------------
+
+// cleanFinalOutput は、LLMの応答から <FINAL_START> と <FINAL_END> マーカーを削除し、
+// マーカー間のクリーンなテキストを抽出します。
+func cleanFinalOutput(llmResponse string) string {
+	startIdx := strings.Index(llmResponse, FinalStartMarker)
+	endIdx := strings.Index(llmResponse, FinalEndMarker)
+
+	// マーカーが見つからない場合は、そのまま返す
+	if startIdx == -1 || endIdx == -1 || startIdx >= endIdx {
+		log.Println("⚠️ WARNING: LLM応答で <FINAL_START> または <FINAL_END> マーカーが見つかりませんでした。そのまま応答を返します。")
+		return strings.TrimSpace(llmResponse)
+	}
+
+	// <FINAL_START> の直後から <FINAL_END> の直前までを抽出
+	extracted := llmResponse[startIdx+len(FinalStartMarker) : endIdx]
+
+	// 前後の空白文字を削除して返す
+	return strings.TrimSpace(extracted)
+}
 
 // segmentText は、結合されたテキストを、安全な最大文字数を超えないように分割します。
 // 段落の区切りを優先して分割し、文脈の欠落を最小限に抑えます。
