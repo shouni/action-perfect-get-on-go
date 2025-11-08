@@ -12,9 +12,6 @@ import (
 	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
-// ContentSeparator は、結合された複数の文書間を区切るための明確な区切り文字です。
-const ContentSeparator = "\n\n--- DOCUMENT END ---\n\n"
-
 // DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
 const DefaultSeparator = "\n\n"
 
@@ -30,6 +27,16 @@ const (
 	FinalStartMarker = "<FINAL_START>"
 	FinalEndMarker   = "<FINAL_END>"
 )
+
+// ----------------------------------------------------------------
+// 内部ヘルパ構造体: セグメントとURLを紐づける
+// ----------------------------------------------------------------
+
+// Segment は、LLMに渡すテキストと、それが由来する元のURLを保持します。
+type Segment struct {
+	Text string
+	URL  string
+}
 
 // ----------------------------------------------------------------
 // Cleaner 構造体とコンストラクタの導入
@@ -61,50 +68,11 @@ func NewCleaner() (*Cleaner, error) {
 }
 
 // ----------------------------------------------------------------
-// 新規追加: URLリストをMarkdown形式に整形するヘルパー関数
+// 既存関数の大幅な変更と削除
 // ----------------------------------------------------------------
-
-// formatURLsForTemplate は、URLの文字列スライスをMarkdownリスト形式に変換します。
-// * [URL] + 改行 の形式で結合し、テンプレートに渡せる単一の文字列を生成します。
-func formatURLsForTemplate(urls []string) string {
-	if len(urls) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for _, url := range urls {
-		// * [URL] 形式で整形し、改行を追加
-		b.WriteString(fmt.Sprintf("* %s\n", url))
-	}
-	return b.String()
-}
-
-// ----------------------------------------------------------------
-// 既存関数のリファクタリング
-// ----------------------------------------------------------------
-
-// CombineContents は、成功した抽出結果の本文を効率的に結合します。
-// 各コンテンツの前には、ソースURL情報が付加され、LLMが識別できるようにします。
-// 最後の文書でなければ明確な区切り文字を追加します。
-func CombineContents(results []extTypes.URLResult) string {
-	var builder strings.Builder
-
-	for i, res := range results {
-		// URLを追記することで、LLMがどのソースのテキストであるかを識別できるようにする
-		builder.WriteString(fmt.Sprintf("--- SOURCE URL %d: %s ---\n", i+1, res.URL))
-		builder.WriteString(res.Content)
-
-		// 最後の文書でなければ明確な区切り文字を追加
-		if i < len(results)-1 {
-			builder.WriteString(ContentSeparator)
-		}
-	}
-
-	return builder.String()
-}
 
 // CleanAndStructureText は、MapReduce処理を実行し、最終的なクリーンアップと構造化を行います。
-// sourceURLs が Reduce プロンプトに直接渡され、最終文書のメタ情報として使用されます。
-func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string, apiKeyOverride string, sourceURLs []string) (string, error) {
+func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.URLResult, apiKeyOverride string) (string, error) {
 
 	// 1. LLMクライアントの初期化
 	var client *gemini.Client
@@ -120,12 +88,24 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 		return "", fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキー（--api-keyオプションまたは環境変数）が設定されているか確認してください: %w", err)
 	}
 
-	// 2. Mapフェーズのためのテキスト分割
-	segments := segmentText(combinedText, MaxSegmentChars)
-	log.Printf("テキストを %d 個のセグメントに分割しました。中間要約を開始します。", len(segments))
+	// 2. MapフェーズのためのURL単位のテキスト分割
+	var allSegments []Segment
+	for _, res := range results {
+		// URLResultのContentを個別にセグメント分割
+		segments := segmentText(res.Content, MaxSegmentChars)
+		for _, segText := range segments {
+			// segmentTextが強制分割した場合の検出ロジックを追加し、ここでURL付きログを出力
+			if len(segText) > MaxSegmentChars { // これはあくまで例であり、segmentTextの実装によっては検出方法が変わる可能性があります
+				log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割しました。（URL: %s）", MaxSegmentChars, res.URL)
+			}
+			allSegments = append(allSegments, Segment{Text: segText, URL: res.URL})
+		}
+	}
+
+	log.Printf("合計 %d 個のセグメント（URL単位で分割）に分割しました。中間要約を開始します。", len(allSegments))
 
 	// 3. Mapフェーズの実行（各セグメントの並列処理）
-	intermediateSummaries, err := c.processSegmentsInParallel(ctx, client, segments)
+	intermediateSummaries, err := c.processSegmentsInParallel(ctx, client, allSegments)
 	if err != nil {
 		return "", fmt.Errorf("セグメント処理（Mapフェーズ）に失敗しました: %w", err)
 	}
@@ -133,16 +113,11 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 4. Reduceフェーズの準備：中間要約の結合
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
-	// URLリストをMarkdown文字列に整形
-	formattedURLs := formatURLsForTemplate(sourceURLs)
-
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	// ReduceTemplateData に整形済み文字列を含める
 	reduceData := prompts.ReduceTemplateData{
 		CombinedText: finalCombinedText,
-		SourceURLs:   formattedURLs,
 	}
 
 	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
@@ -185,7 +160,6 @@ func cleanFinalOutput(llmResponse string) string {
 }
 
 // segmentText は、結合されたテキストを、安全な最大文字数を超えないように分割します。
-// 段落の区切りを優先して分割し、文脈の欠落を最小限に抑えます。
 func segmentText(text string, maxChars int) []string {
 	var segments []string
 	current := []rune(text)
@@ -201,13 +175,8 @@ func segmentText(text string, maxChars int) []string {
 		separatorFound := false
 		separatorLen := 0
 
-		// 1. ContentSeparator (最高優先度) を探す
-		if lastSepIdx := strings.LastIndex(segmentCandidate, ContentSeparator); lastSepIdx != -1 && lastSepIdx > maxChars/2 {
-			splitIndex = lastSepIdx
-			separatorLen = len(ContentSeparator)
-			separatorFound = true
-		} else if lastSepIdx := strings.LastIndex(segmentCandidate, DefaultSeparator); lastSepIdx != -1 && lastSepIdx > maxChars/2 {
-			// 2. ContentSeparator が見つからない場合、一般的な改行(\n\n)を探す
+		// 1. 一般的な改行(\n\n)を探す
+		if lastSepIdx := strings.LastIndex(segmentCandidate, DefaultSeparator); lastSepIdx != -1 && lastSepIdx > maxChars/2 {
 			splitIndex = lastSepIdx
 			separatorLen = len(DefaultSeparator)
 			separatorFound = true
@@ -219,7 +188,7 @@ func segmentText(text string, maxChars int) []string {
 			splitIndex += separatorLen
 		} else {
 			// 安全な区切りが見つからない場合は、そのまま最大文字数で切り、警告を出す
-			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。", maxChars)
+			log.Printf("⚠️ WARNING: 分割点で適切な区切りが見つかりませんでした。強制的に %d 文字で分割します。（URL: %s）", maxChars)
 			splitIndex = maxChars
 		}
 
@@ -231,23 +200,26 @@ func segmentText(text string, maxChars int) []string {
 }
 
 // processSegmentsInParallel は Mapフェーズのログ出力を最小化
-func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.Client, segments []string) ([]string, error) {
+func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.Client, allSegments []Segment) ([]string, error) {
 	var wg sync.WaitGroup
 	resultsChan := make(chan struct {
 		summary string
 		err     error
-	}, len(segments))
+	}, len(allSegments))
 
-	for i, segment := range segments {
+	for i, seg := range allSegments {
 		wg.Add(1)
 
-		go func(index int, seg string) {
+		go func(index int, s Segment) {
 			defer wg.Done()
 
-			mapData := prompts.MapTemplateData{SegmentText: seg}
+			mapData := prompts.MapTemplateData{
+				SegmentText: s.Text,
+				SourceURL:   s.URL,
+			}
 			prompt, err := c.mapBuilder.BuildMap(mapData)
 			if err != nil {
-				log.Printf("❌ ERROR: セグメント %d のプロンプト生成に失敗しました: %v", index+1, err)
+				log.Printf("❌ ERROR: セグメント %d のプロンプト生成に失敗しました: %v (URL: %s)", index+1, err, s.URL)
 				resultsChan <- struct {
 					summary string
 					err     error
@@ -255,12 +227,10 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 				return
 			}
 
-			// Mapプロンプトのプレビューは省略（冗長なため）
-
 			response, err := client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
 
 			if err != nil {
-				log.Printf("❌ ERROR: セグメント %d の処理に失敗しました: %v", index+1, err)
+				log.Printf("❌ ERROR: セグメント %d の処理に失敗しました: %v (URL: %s)", index+1, err, s.URL)
 				resultsChan <- struct {
 					summary string
 					err     error
@@ -268,13 +238,11 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 				return
 			}
 
-			// Map Intermediate Summary の全内容は省略（冗長なため）
-
 			resultsChan <- struct {
 				summary string
 				err     error
 			}{summary: response.Text, err: nil}
-		}(i, segment)
+		}(i, seg)
 	}
 
 	wg.Wait()
@@ -289,13 +257,4 @@ func (c *Cleaner) processSegmentsInParallel(ctx context.Context, client *gemini.
 	}
 
 	return summaries, nil
-}
-
-// ExtractURLs は、成功した結果からURLのリストのみを抽出します。
-func ExtractURLs(results []extTypes.URLResult) []string {
-	urls := make([]string, len(results))
-	for i, res := range results {
-		urls[i] = res.URL
-	}
-	return urls
 }

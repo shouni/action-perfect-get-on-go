@@ -167,17 +167,14 @@ func (a *App) generateCleanedOutput(ctx context.Context, successfulResults []ext
 		return "", fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
-	// データ結合フェーズ
-	log.Println("INFO: フェーズ2 - 抽出結果の結合を開始します。")
-	combinedText := cleaner.CombineContents(successfulResults)
-	sourceURLs := cleaner.ExtractURLs(successfulResults)
-	numURLs := len(sourceURLs)
-	log.Printf("INFO: 結合されたテキストの長さ: %dバイト (ソースURL数: %d)", len(combinedText), numURLs)
+	// データ結合とURL抽出の処理は、cleanerパッケージ内部に移動しました。
+	log.Printf("INFO: フェーズ2 - 抽出結果 (%d件) を基に、AIクリーンアップと構造化を開始します。", len(successfulResults))
 
 	// AIクリーンアップフェーズ (LLM)
 	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	cleanedText, err := c.CleanAndStructureText(ctx, combinedText, a.Options.LLMAPIKey, sourceURLs)
+	// 引数を変更: combinedTextとsourceURLsを削除し、successfulResultsを直接渡す
+	cleanedText, err := c.CleanAndStructureText(ctx, successfulResults, a.Options.LLMAPIKey)
 	if err != nil {
 		return "", fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
