@@ -65,7 +65,6 @@ func NewCleaner() (*Cleaner, error) {
 // ----------------------------------------------------------------
 
 // formatURLsForTemplate は、URLの文字列スライスをMarkdownリスト形式に変換します。
-// * [URL] + 改行 の形式で結合し、テンプレートに渡せる単一の文字列を生成します。
 func formatURLsForTemplate(urls []string) string {
 	if len(urls) == 0 {
 		return ""
@@ -133,13 +132,12 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 4. Reduceフェーズの準備：中間要約の結合
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
-	// URLリストをMarkdown文字列に整形
 	formattedURLs := formatURLsForTemplate(sourceURLs)
 
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	// ReduceTemplateData に整形済み文字列を含める
+	// 5A: ReduceTemplateData に整形済み文字列を含める
 	reduceData := prompts.ReduceTemplateData{
 		CombinedText: finalCombinedText,
 		SourceURLs:   formattedURLs,
@@ -149,6 +147,14 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	if err != nil {
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
 	}
+
+	// ★ ここにDEBUGログを追加します
+	promptPreviewLength := 3000
+	if len(finalPrompt) < promptPreviewLength {
+		promptPreviewLength = len(finalPrompt)
+	}
+	log.Printf("DEBUG: Reduce Final Prompt プレビュー:\n---\n%s...\n-\n", finalPrompt[:promptPreviewLength])
+	// ★ ここまでDEBUGログ
 
 	finalResponse, err := client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
 	if err != nil {
