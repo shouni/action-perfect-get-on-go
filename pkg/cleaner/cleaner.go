@@ -61,6 +61,24 @@ func NewCleaner() (*Cleaner, error) {
 }
 
 // ----------------------------------------------------------------
+// 新規追加: URLリストをMarkdown形式に整形するヘルパー関数
+// ----------------------------------------------------------------
+
+// formatURLsForTemplate は、URLの文字列スライスをMarkdownリスト形式に変換します。
+// * [URL] + 改行 の形式で結合し、テンプレートに渡せる単一の文字列を生成します。
+func formatURLsForTemplate(urls []string) string {
+	if len(urls) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, url := range urls {
+		// * [URL] 形式で整形し、改行を追加
+		b.WriteString(fmt.Sprintf("* %s\n", url))
+	}
+	return b.String()
+}
+
+// ----------------------------------------------------------------
 // 既存関数のリファクタリング
 // ----------------------------------------------------------------
 
@@ -115,19 +133,29 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, combinedText string
 	// 4. Reduceフェーズの準備：中間要約の結合
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
+	// URLリストをMarkdown文字列に整形
+	formattedURLs := formatURLsForTemplate(sourceURLs)
+
 	// 5. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し
 	log.Println("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
-	// ReduceTemplateData に SourceURLs を含める
+	// ReduceTemplateData に整形済み文字列を含める
 	reduceData := prompts.ReduceTemplateData{
 		CombinedText: finalCombinedText,
-		SourceURLs:   sourceURLs,
+		SourceURLs:   formattedURLs,
 	}
 
 	finalPrompt, err := c.reduceBuilder.BuildReduce(reduceData)
 	if err != nil {
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
 	}
+
+	// Reduceプロンプトの冒頭を常に表示
+	promptPreviewLength := 1000
+	if len(finalPrompt) < promptPreviewLength {
+		promptPreviewLength = len(finalPrompt)
+	}
+	log.Printf("DEBUG: Reduce Final Prompt プレビュー:\n---\n%s...\n-\n", finalPrompt[:promptPreviewLength])
 
 	finalResponse, err := client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
 	if err != nil {
