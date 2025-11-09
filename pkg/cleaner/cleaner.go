@@ -22,8 +22,8 @@ const MaxSegmentChars = 400000
 
 const DefaultMaxMapConcurrency = 5
 
-// DefaultLLMRateLimit 200msごとに1リクエストを許可 = 1秒あたり最大5リクエスト
-const DefaultLLMRateLimit = 200 * time.Millisecond
+// DefaultLLMRateLimit 1000msごとに1リクエストを許可
+const DefaultLLMRateLimit = 1000 * time.Millisecond
 
 // ----------------------------------------------------------------
 // LLM応答マーカーの定数
