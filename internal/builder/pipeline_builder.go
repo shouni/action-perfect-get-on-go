@@ -21,10 +21,10 @@ func BuildPipeline(opts pipeline.CmdOptions) (*pipeline.Pipeline, error) {
 	clientOptions := []httpkit.ClientOption{
 		httpkit.WithMaxRetries(pipeline.DefaultHTTPMaxRetries), // httpkitレベルのリトライ
 	}
-	webClient := httpkit.New(opts.ScraperTimeout, clientOptions...)
+	httpClient := httpkit.New(opts.ScraperTimeout, clientOptions...)
 
 	// 1.2 Extractor (Webコンテンツ抽出ロジック) の構築
-	extractor, err := extract.NewExtractor(webClient)
+	extractor, err := extract.NewExtractor(httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
 	}
