@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/internal/app"
+	"github.com/shouni/action-perfect-get-on-go/internal/builder"
+	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +64,7 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
 	}
 
-	opts := app.CmdOptions{
+	opts := pipeline.CmdOptions{
 		LLMAPIKey:          llmAPIKey,
 		LLMTimeout:         llmTimeout,
 		ScraperTimeout:     scraperTimeout,
@@ -71,11 +72,19 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		OutputFilePath:     outputFilePath,
 		MaxScraperParallel: maxScraperParallel,
 	}
+	// 1. パイプラインの構築
+	p, err := builder.BuildPipeline(opts)
+	if err != nil {
+		// パイプライン構築が失敗した場合（例: Extractor初期化失敗など）
+		return fmt.Errorf("パイプラインの構築に失敗しました: %w", err)
+	}
 
-	// グローバルタイムアウト設定
-	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
-	defer cancel()
+	// 2. パイプラインの実行
+	// Execute は、内部のすべての処理（URL生成、コンテンツ取得、クリーンアップ、ファイル出力）からのエラーをラップして返します。
+	if err := p.Execute(context.Background()); err != nil {
+		// パイプライン実行中の任意のステージでエラーが発生した場合
+		return fmt.Errorf("パイプラインの実行中にエラーが発生しました: %w", err)
+	}
 
-	application := app.NewApp(opts)
-	return application.Execute(ctx)
+	return nil
 }
