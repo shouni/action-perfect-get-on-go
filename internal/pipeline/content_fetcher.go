@@ -92,12 +92,10 @@ func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
 // (元のヘルパー関数から移動し、Extractorへの依存を変更)
 func (w *WebContentFetcherImpl) processFailedURLs(ctx context.Context, failedURLs []string, retryDelay time.Duration) ([]extTypes.URLResult, error) {
-	// [行番号: 84 修正] log.Printf -> slog.Warn (構造化)
 	slog.Warn("抽出に失敗したURLがありました。待機後、順次リトライを開始します。", slog.Int("count", len(failedURLs)), slog.Duration("delay", retryDelay))
 	time.Sleep(retryDelay)
 
 	var retriedSuccessfulResults []extTypes.URLResult
-	// [行番号: 87 修正] log.Println -> slog.Info
 	slog.Info("失敗URLの順次リトライを開始します。")
 
 	for _, url := range failedURLs {
@@ -116,10 +114,8 @@ func (w *WebContentFetcherImpl) processFailedURLs(ctx context.Context, failedURL
 
 		if extractErr != nil {
 			formattedErr := formatErrorLog(extractErr)
-			// [行番号: 110 修正] log.Printf -> slog.Error (構造化)
 			slog.Error("リトライでもURLの抽出に失敗しました", slog.String("url", url), slog.String("error", formattedErr))
 		} else {
-			// [行番号: 113 修正] log.Printf -> slog.Info (構造化)
 			slog.Info("URLの抽出がリトライで成功しました", slog.String("url", url))
 			retriedSuccessfulResults = append(retriedSuccessfulResults, extTypes.URLResult{
 				URL:     url,
