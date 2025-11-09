@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
-	extScraper "github.com/shouni/go-web-exact/v2/pkg/scraper"
+	"github.com/shouni/go-web-exact/v2/pkg/scraper"
 	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
@@ -152,5 +152,5 @@ func formatErrorLog(err error) string {
 }
 
 // 型アサーションチェック (インターフェースの定義が外部パッケージの実装に合致することを確認)
-var _ ScraperExecutor = (*extScraper.ParallelScraper)(nil)
+var _ ScraperExecutor = (*scraper.ParallelScraper)(nil)
 var _ Extractor = (*extract.Extractor)(nil)

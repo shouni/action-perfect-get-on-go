@@ -7,7 +7,7 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-web-exact/v2/pkg/extract"
-	extScraper "github.com/shouni/go-web-exact/v2/pkg/scraper"
+	"github.com/shouni/go-web-exact/v2/pkg/scraper"
 )
 
 // BuildPipeline は、必要なすべての依存関係を構築し、DIされた Pipeline インスタンスを返します。
@@ -30,7 +30,7 @@ func BuildPipeline(opts pipeline.CmdOptions) (*pipeline.Pipeline, error) {
 	}
 
 	// 1.3 ScraperExecutor (並列実行ロジック) の構築
-	scraperExecutor := extScraper.NewParallelScraper(extractor, opts.MaxScraperParallel)
+	scraperExecutor := scraper.NewParallelScraper(extractor, opts.MaxScraperParallel, scraper.DefaultScrapeRateLimit)
 
 	// 1.4 ContentCleaner (LLMクリーンアップロジック) の構築
 	contentCleaner, err := cleaner.NewCleaner(cleaner.DefaultMaxMapConcurrency)

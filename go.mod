@@ -7,7 +7,7 @@ require (
 	github.com/shouni/go-cli-base v1.0.5
 	github.com/shouni/go-http-kit v1.1.0
 	github.com/shouni/go-utils v1.0.8
-	github.com/shouni/go-web-exact/v2 v2.0.10
+	github.com/shouni/go-web-exact/v2 v2.0.13
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -34,6 +34,7 @@ require (
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genai v1.33.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
 	google.golang.org/grpc v1.76.0 // indirect
