@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -50,13 +50,15 @@ func NewWebContentFetcherImpl(scraperExecutor ScraperExecutor, extractor Extract
 // Fetch は、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 // (元の app.generateContents のロジックを保持)
 func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls []string) ([]extTypes.URLResult, error) {
-	log.Println("INFO: フェーズ1 - Webコンテンツの並列抽出を開始します。")
+	// [行番号: 29 修正] log.Println -> slog.Info
+	slog.Info("フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. 並列実行 (注入されたscraperExecutorを使用)
 	results := w.scraperExecutor.ScrapeInParallel(ctx, urls)
 
 	// 2. 無条件遅延 (負荷軽減)
-	log.Printf("INFO: 並列抽出が完了しました。次の処理に進む前に %s 待機します。", InitialScrapeDelay)
+	// [行番号: 32 修正] log.Printf -> slog.Info (構造化)
+	slog.Info("並列抽出が完了しました。次の処理に進む前に待機します。", slog.Duration("delay", InitialScrapeDelay))
 	time.Sleep(InitialScrapeDelay)
 
 	// 3. 結果の分類
@@ -67,7 +69,8 @@ func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls
 	if len(failedURLs) > 0 {
 		retriedSuccessfulResults, retryErr := w.processFailedURLs(ctx, failedURLs, RetryScrapeDelay)
 		if retryErr != nil {
-			log.Printf("WARNING: 失敗URLのリトライ処理中にエラーが発生しました: %v", retryErr)
+			// [行番号: 42 修正] log.Printf -> slog.Warn (構造化)
+			slog.Warn("失敗URLのリトライ処理中にエラーが発生しました", slog.Any("error", retryErr))
 		}
 		successfulResults = append(successfulResults, retriedSuccessfulResults...)
 	}
@@ -77,8 +80,13 @@ func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls
 		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
-	log.Printf("INFO: 最終成功数: %d/%d URL (初期成功: %d, リトライ成功: %d)",
-		len(successfulResults), len(urls), initialSuccessfulCount, len(successfulResults)-initialSuccessfulCount)
+	// [行番号: 54 修正] log.Printf -> slog.Info (構造化)
+	slog.Info("最終成功数",
+		slog.Int("successful", len(successfulResults)),
+		slog.Int("total", len(urls)),
+		slog.Int("initial_successful", initialSuccessfulCount),
+		slog.Int("retry_successful", len(successfulResults)-initialSuccessfulCount),
+	)
 
 	return successfulResults, nil
 }
@@ -86,14 +94,17 @@ func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls
 // processFailedURLsは、失敗したURLに対し、指定された遅延時間後に順次リトライを実行します。
 // (元のヘルパー関数から移動し、Extractorへの依存を変更)
 func (w *WebContentFetcherImpl) processFailedURLs(ctx context.Context, failedURLs []string, retryDelay time.Duration) ([]extTypes.URLResult, error) {
-	log.Printf("WARNING: 抽出に失敗したURLが %d 件ありました。%s待機後、順次リトライを開始します。", len(failedURLs), retryDelay)
+	// [行番号: 84 修正] log.Printf -> slog.Warn (構造化)
+	slog.Warn("抽出に失敗したURLがありました。待機後、順次リトライを開始します。", slog.Int("count", len(failedURLs)), slog.Duration("delay", retryDelay))
 	time.Sleep(retryDelay)
 
 	var retriedSuccessfulResults []extTypes.URLResult
-	log.Println("INFO: 失敗URLの順次リトライを開始します。")
+	// [行番号: 87 修正] log.Println -> slog.Info
+	slog.Info("失敗URLの順次リトライを開始します。")
 
 	for _, url := range failedURLs {
-		log.Printf("INFO: リトライ中: %s", url)
+		// [行番号: 90 修正] log.Printf -> slog.Info (構造化)
+		slog.Info("リトライ中", slog.String("url", url))
 
 		// 注入されたExtractorを使用
 		content, hasBodyFound, err := w.extractor.FetchAndExtractText(ctx, url)
@@ -107,9 +118,11 @@ func (w *WebContentFetcherImpl) processFailedURLs(ctx context.Context, failedURL
 
 		if extractErr != nil {
 			formattedErr := formatErrorLog(extractErr)
-			log.Printf("ERROR: リトライでも %s の抽出に失敗しました: %s", url, formattedErr)
+			// [行番号: 110 修正] log.Printf -> slog.Error (構造化)
+			slog.Error("リトライでもURLの抽出に失敗しました", slog.String("url", url), slog.String("error", formattedErr))
 		} else {
-			log.Printf("INFO: SUCCESS: %s の抽出がリトライで成功しました。", url)
+			// [行番号: 113 修正] log.Printf -> slog.Info (構造化)
+			slog.Info("URLの抽出がリトライで成功しました", slog.String("url", url))
 			retriedSuccessfulResults = append(retriedSuccessfulResults, extTypes.URLResult{
 				URL:     url,
 				Content: content,

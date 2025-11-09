@@ -3,8 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log"
-	"log/slog"
+	"log/slog" // log/slog のみを使用
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,10 +45,12 @@ func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner) *LLMOutputGenerato
 // Generate は、取得したコンテンツをLLMでクリーンアップ・構造化し、ファイルに出力します。
 // (元の app.generateCleanedOutput のロジックを保持)
 func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, successfulResults []extTypes.URLResult) error {
-	log.Printf("INFO: フェーズ2 - 抽出結果 (%d件) を基に、AIクリーンアップと構造化を開始します。", len(successfulResults))
+	// [行番号: 38 修正] log.Printf -> slog.Info (構造化)
+	slog.Info("フェーズ2 - 抽出結果を基に、AIクリーンアップと構造化を開始します。", slog.Int("count", len(successfulResults)))
 
 	// AIクリーンアップフェーズ (LLM) (注入されたcontentCleanerを使用)
-	log.Println("INFO: フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
+	// [行番号: 41 修正] log.Println -> slog.Info
+	slog.Info("フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
 	// 注入されたcontentCleanerのメソッドを呼び出す
 	cleanedText, err := l.contentCleaner.CleanAndStructureText(ctx, successfulResults, opts.LLMAPIKey)
@@ -61,7 +62,15 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	if err := l.writeOutputString(opts.OutputFilePath, cleanedText); err != nil {
 		return fmt.Errorf("最終結果の出力に失敗しました: %w", err)
 	}
-	log.Println("INFO: LLMによる構造化が完了し、ファイルに出力されました。")
+
+	// [行番号: 50 修正] log.Println -> slog.Info (この行は writeOutputString 内の slog.Info の後に実行される)
+	// NOTE: writeOutputString 内で既に slog.Info("最終生成完了...") が出力されるため、
+	// ここで再度ログを出す場合は、メッセージを調整するか、あるいはこの行を削除するのが望ましい場合がありますが、
+	// 元のロジックに従い、ログレベル/メッセージが重複しないように修正案を採用します。
+	// *元のコードではlog.Println("INFO: LLMによる構造化が完了し、ファイルに出力されました。")*
+	// *writeOutputString内ではslog.Info("最終生成完了 - ファイルに書き込みました", slog.String("file", filename))*
+	// ファイル出力がない場合（標準出力の場合）を考慮し、この行は生かすのが妥当です。
+	slog.Info("LLMによる構造化が完了し、ファイルに出力されました。")
 	return nil
 }
 

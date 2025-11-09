@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog" // log/slog に変更
 	"time"
 )
 
@@ -31,7 +31,8 @@ func (p *Pipeline) Execute(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%sでエラーが発生しました: %w", PhaseURLs, err)
 	}
-	log.Printf("INFO: Perfect Get On 処理を開始します。対象URL数: %d個", len(urls))
+	// [行番号: 30 修正] log.Printf -> slog.Info (構造化)
+	slog.Info("Perfect Get On 処理を開始します。", slog.Int("target_urls", len(urls)))
 
 	// 2. コンテンツ取得ステージ
 	successfulResults, err := p.Fetcher.Fetch(ctx, p.Options, urls)
@@ -44,6 +45,7 @@ func (p *Pipeline) Execute(ctx context.Context) error {
 		return fmt.Errorf("%sでエラーが発生しました: %w", PhaseCleanUp, err)
 	}
 
-	log.Println("INFO: 処理が正常に完了しました。")
+	// [行番号: 42 修正] log.Println -> slog.Info
+	slog.Info("処理が正常に完了しました。")
 	return nil
 }
