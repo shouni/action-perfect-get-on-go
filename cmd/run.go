@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -80,8 +81,9 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 
 	// 2. パイプラインの実行
 	// Execute は、内部のすべての処理（URL生成、コンテンツ取得、クリーンアップ、ファイル出力）からのエラーをラップして返します。
-	if err := p.Execute(cmd.Context()); err != nil {
-		// パイプライン実行中の任意のステージでエラーが発生した場合
+	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
+	defer cancel()
+	if err := p.Execute(ctx); err != nil {
 		return fmt.Errorf("パイプラインの実行中にエラーが発生しました: %w", err)
 	}
 

@@ -50,15 +50,13 @@ func NewWebContentFetcherImpl(scraperExecutor ScraperExecutor, extractor Extract
 // Fetch は、URLリストに対して並列スクレイピングと、失敗したURLに対するリトライを実行します。
 // (元の app.generateContents のロジックを保持)
 func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls []string) ([]extTypes.URLResult, error) {
-	// [行番号: 29 修正] log.Println -> slog.Info
 	slog.Info("フェーズ1 - Webコンテンツの並列抽出を開始します。")
 
 	// 1. 並列実行 (注入されたscraperExecutorを使用)
 	results := w.scraperExecutor.ScrapeInParallel(ctx, urls)
 
 	// 2. 無条件遅延 (負荷軽減)
-	// [行番号: 32 修正] log.Printf -> slog.Info (構造化)
-	slog.Info("並列抽出が完了しました。次の処理に進む前に待機します。", slog.Duration("delay", InitialScrapeDelay))
+	slog.Info("並列抽出が完了しました。次の処理に進む前に待機します。", slog.String("phase", PhaseContent), slog.Duration("delay", InitialScrapeDelay))
 	time.Sleep(InitialScrapeDelay)
 
 	// 3. 結果の分類
@@ -80,12 +78,12 @@ func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls
 		return nil, fmt.Errorf("処理可能なWebコンテンツを一件も取得できませんでした。URLを確認してください。")
 	}
 
-	// [行番号: 54 修正] log.Printf -> slog.Info (構造化)
-	slog.Info("最終成功数",
+	slog.Info("コンテンツ取得結果",
 		slog.Int("successful", len(successfulResults)),
 		slog.Int("total", len(urls)),
 		slog.Int("initial_successful", initialSuccessfulCount),
 		slog.Int("retry_successful", len(successfulResults)-initialSuccessfulCount),
+		slog.String("phase", PhaseContent),
 	)
 
 	return successfulResults, nil
