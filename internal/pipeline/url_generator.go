@@ -94,26 +94,16 @@ func (d *DefaultURLGeneratorImpl) readURLsFromFile(ctx context.Context, filePath
 }
 
 // readGCSObject は、指定された GCS URI からオブジェクトを読み込み、
-// io.ReaderClose を返します。
+// io.ReadCloser を返します。
 func (d *DefaultURLGeneratorImpl) readGCSObject(ctx context.Context, gcsURI string) (io.ReadCloser, error) {
 	// d.gcsClient の nil チェック
 	if d.gcsClient == nil {
 		return nil, fmt.Errorf("GCS URIが指定されましたが、GCSクライアントが初期化されていません。")
 	}
 
-	// URIから "gs://" を除いた部分を取得
-	path := gcsURI
-	if strings.HasPrefix(path, "gs://") {
-		path = path[5:]
-	} else {
-		// 通常は呼び出し元でチェックされていますが、念のため
-		return nil, fmt.Errorf("無効なGCS URI形式です: %s (gs:// で始まっていません)", gcsURI)
-	}
-
-	// バケット名とオブジェクト名を取得
+	path := gcsURI[5:]
 	parts := strings.SplitN(path, "/", 2)
 
-	// 修正: バケット名とオブジェクト名が両方存在し、かつ空でないことをチェック
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, fmt.Errorf("無効なGCS URI形式です: %s (gs://bucket-name/object-name の形式で指定してください)", gcsURI)
 	}
