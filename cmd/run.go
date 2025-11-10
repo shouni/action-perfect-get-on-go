@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	// GCSクライアント初期化のエラーハンドリングのために storage をインポートする必要は
+	// builder側で行っているため、ここでは不要です。
+
 	"github.com/shouni/action-perfect-get-on-go/internal/builder"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/spf13/cobra"
@@ -78,11 +81,15 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// 1. パイプラインの構築
-	p, err := builder.BuildPipeline(ctx, opts)
+	p, closer, err := builder.BuildPipeline(ctx, opts)
 	if err != nil {
 		// パイプライン構築が失敗した場合（例: Extractor初期化失敗など）
 		return fmt.Errorf("パイプラインの構築に失敗しました: %w", err)
 	}
+
+	// GCSクライアントを含むすべてのリソースを確実にクローズする
+	// closer は nil でないことが保証されている（builder側で初期化成功しているため）
+	defer closer()
 
 	// 2. パイプラインの実行
 	// Execute は、内部のすべての処理（URL生成、コンテンツ取得、クリーンアップ、ファイル出力）からのエラーをラップして返します。
