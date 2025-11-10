@@ -1,8 +1,10 @@
 https://github.com/shouni/go-utils
 https://github.com/shouni/go-http-kit
 https://github.com/shouni/go-web-exact
+https://github.com/shouni/go-ai-client
 https://github.com/shouni/go-notifier
+https://github.com/shouni/web-text-pipe-go
 https://github.com/shouni/action-perfect-get-on-go
 https://github.com/shouni/prototypus-ai-doc-go
 https://github.com/shouni/git-gemini-reviewer-go
-https://github.com/shouni/web-text-pipe-go
+https://github.com/shouni/prototypus-ai-doc-go
