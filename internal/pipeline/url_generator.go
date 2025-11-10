@@ -46,50 +46,34 @@ func (d *DefaultURLGeneratorImpl) Generate(ctx context.Context, opts CmdOptions)
 	return urls, nil
 }
 
-// readURLsFromFileは指定されたファイルからURLを読み込みます。
+// readURLsFromFile は指定されたファイルからURLを読み込みます。
 func (d *DefaultURLGeneratorImpl) readURLsFromFile(ctx context.Context, filePath string) ([]string, error) {
 	var reader io.Reader
+	var closer io.Closer // deferのためにio.Closerを保持
 
 	if strings.HasPrefix(filePath, "gs://") {
-		// GCS URI の処理
-		if d.gcsClient == nil {
-			return nil, fmt.Errorf("GCS URIが指定されましたが、GCSクライアントが初期化されていません。")
-		}
-
-		// GCSクライアントは NewDefaultURLGeneratorImpl で一度初期化されているため、
-		// ここで client.Close() は呼び出しません。
-
-		// gs://bucket-name/object-name からバケット名とオブジェクト名を取得
-		// filePath[5:] は "gs://" を除いた部分
-		parts := strings.SplitN(filePath[5:], "/", 2)
-
-		// 修正：バケット名とオブジェクト名が両方存在し、かつ空でないことをチェック
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return nil, fmt.Errorf("無効なGCS URI形式です: %s (gs://bucket-name/object-name の形式で指定してください)", filePath)
-		}
-		bucketName := parts[0]
-		objectName := parts[1]
-
-		// GCS オブジェクトリーダーを作成
-		// d.gcsClient を再利用
-		rc, err := d.gcsClient.Bucket(bucketName).Object(objectName).NewReader(ctx)
+		rc, err := d.readGCSObject(ctx, filePath)
 		if err != nil {
-			// NewReader がエラーを返す場合、ファイルが存在しないか、権限がない
-			return nil, fmt.Errorf("GCSファイルの読み込みに失敗しました (URI: %s): %w", filePath, err)
+			return nil, err // エラーは readGCSObject で整形済み
 		}
-		defer rc.Close()
 		reader = rc
-
+		closer = rc // rc は io.ReadCloser なので、io.Closerとしても使用可能
 	} else {
 		// ローカルファイルパスの処理 (既存のロジック)
 		file, err := os.Open(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("ローカルファイルのオープンに失敗しました: %w", err)
 		}
-		defer file.Close()
 		reader = file
+		closer = file
 	}
 
+	// GCSまたはローカルファイルのクローズ処理
+	if closer != nil {
+		defer closer.Close()
+	}
+
+	// 共通のURLパースロジック
 	var urls []string
 	scanner := bufio.NewScanner(reader)
 
@@ -107,4 +91,41 @@ func (d *DefaultURLGeneratorImpl) readURLsFromFile(ctx context.Context, filePath
 	}
 
 	return urls, nil
+}
+
+// readGCSObject は、指定された GCS URI からオブジェクトを読み込み、
+// io.ReaderClose を返します。
+func (d *DefaultURLGeneratorImpl) readGCSObject(ctx context.Context, gcsURI string) (io.ReadCloser, error) {
+	// d.gcsClient の nil チェック
+	if d.gcsClient == nil {
+		return nil, fmt.Errorf("GCS URIが指定されましたが、GCSクライアントが初期化されていません。")
+	}
+
+	// URIから "gs://" を除いた部分を取得
+	path := gcsURI
+	if strings.HasPrefix(path, "gs://") {
+		path = path[5:]
+	} else {
+		// 通常は呼び出し元でチェックされていますが、念のため
+		return nil, fmt.Errorf("無効なGCS URI形式です: %s (gs:// で始まっていません)", gcsURI)
+	}
+
+	// バケット名とオブジェクト名を取得
+	parts := strings.SplitN(path, "/", 2)
+
+	// 修正: バケット名とオブジェクト名が両方存在し、かつ空でないことをチェック
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("無効なGCS URI形式です: %s (gs://bucket-name/object-name の形式で指定してください)", gcsURI)
+	}
+	bucketName := parts[0]
+	objectName := parts[1]
+
+	// GCS オブジェクトリーダーを作成
+	rc, err := d.gcsClient.Bucket(bucketName).Object(objectName).NewReader(ctx)
+	if err != nil {
+		// ファイルが存在しないか、権限がない
+		return nil, fmt.Errorf("GCSファイルの読み込みに失敗しました (URI: %s): %w", gcsURI, err)
+	}
+
+	return rc, nil
 }
