@@ -38,7 +38,13 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 
 	// プロンプトビルダーの初期化
 	mapBuilder := prompts.NewMapPromptBuilder()
+	if err := mapBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("Map Prompt Builderの初期化に失敗しました: %w", err)
+	}
 	reduceBuilder := prompts.NewReducePromptBuilder()
+	if err := reduceBuilder.Err(); err != nil {
+		return nil, fmt.Errorf("Reduce Prompt Builderの初期化に失敗しました: %w", err)
+	}
 
 	// PromptBuilders を構造体にまとめる
 	builders := cleaner.PromptBuilders{
