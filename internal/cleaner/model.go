@@ -15,7 +15,7 @@ const MaxSegmentChars = 400000
 // DefaultMaxMapConcurrency は、Mapフェーズでデフォルトで許可する同時実行数です。
 const DefaultMaxMapConcurrency = 2
 
-// DefaultLLMRateLimit は、1000msごとに1リクエストを許可するレートリミットです。
+// DefaultLLMRateLimit は、2000msごとに1リクエストを許可するレートリミットです。
 const DefaultLLMRateLimit = 2000 * time.Millisecond
 
 // FinalStartMarker は Reduce プロンプトで定義された最終出力開始マーカーです。
