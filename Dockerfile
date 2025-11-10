@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # 実行ファイルが ./cmd ディレクトリにあるため、ビルドパスを指定
-RUN CGO_ENABLED=0 go build -o /bin/llm_cleaner ./cmd
+RUN CGO_ENABLED=0 go build -o bin/llm_cleaner
 
 # ----------------------------------------------------------------------
 # STEP 2: 実行ステージ (実行専用の超軽量・セキュアなイメージ)

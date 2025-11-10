@@ -88,8 +88,9 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 			case <-rateLimiter:
 				// 続行
 			case <-ctx.Done():
-				// エラーログを出す必要がないため、エラーメッセージは簡略化
-				resultsChan <- MapResult{Err: fmt.Errorf("セグメント %d 処理がコンテキストキャンセルにより中断されました: %w", index+1, ctx.Err())}
+				// コンテキストキャンセルはエラーとして扱わず、処理を中断する
+				// 必要に応じて、slog.Debugなどで詳細をログ出力する
+				resultsChan <- MapResult{Err: ctx.Err()} // ctx.Err() を直接返すことで、キャンセル理由が明確になる
 				return
 			}
 

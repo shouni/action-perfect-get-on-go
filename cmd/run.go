@@ -73,7 +73,7 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		MaxScraperParallel: maxScraperParallel,
 	}
 
-	// LLMTimeout に基づいてパイプライン全体のコンテキストを作成
+	// LLMTimeout を含む、パイプライン全体の実行コンテキストを作成
 	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
 	defer cancel()
 
