@@ -17,11 +17,6 @@ type Cleaner struct {
 
 // NewCleaner は新しい Cleaner インスタンスを作成し、PromptBuilderを一度だけ初期化します。
 func NewCleaner(builders PromptBuilders, executor LLMExecutor) (*Cleaner, error) {
-	// PromptBuilder のエラーチェック (model.go に移動したため、ここでは Builders が有効であることを前提)
-	if builders.MapBuilder.Err() != nil || builders.ReduceBuilder.Err() != nil {
-		return nil, fmt.Errorf("prompt builder の初期化エラー: Map Builder: %v, Reduce Builder: %v",
-			builders.MapBuilder.Err(), builders.ReduceBuilder.Err())
-	}
 	if executor == nil {
 		return nil, fmt.Errorf("LLM Executor は nil にできません")
 	}
@@ -45,8 +40,7 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.
 		}
 	}
 
-	// 修正: log.Printf -> slog.Info (構造化)
-	slog.Info("コンテンツをセグメントに分割しました。中間要約を開始します。",
+	slog.Info("コンテンツをURL単位でセグメントに分割しました。中間要約を開始します。",
 		slog.Int("total_segments", len(allSegments)))
 
 	// 2. Mapフェーズの実行（Executorに委譲）
