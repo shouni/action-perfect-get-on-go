@@ -1,8 +1,12 @@
+// internal/builder/pipeline_builder.go
 package builder
 
 import (
 	"context"
 	"fmt"
+
+	// GCSクライアントの初期化に必要なパッケージ
+	"cloud.google.com/go/storage"
 
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
@@ -12,12 +16,24 @@ import (
 	"github.com/shouni/go-web-exact/v2/pkg/scraper"
 )
 
-// BuildPipeline は、必要なすべての依存関係を構築し、DIされた Pipeline インスタンスを返します。
-// (元の app.go の初期化ロジックと NewApp の役割を担う)
-func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pipeline, error) { // ctx を追加
+// BuildPipeline は、必要なすべての依存関係を構築し、DIされた Pipeline インスタンスと
+// GCSクライアントのクリーンアップ関数 (Close) を返します。
+func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pipeline, func(), error) { // 戻り値に func() を追加
+
 	// ----------------------------------------------------------------
 	// 1. 依存関係の具体化 (外部パッケージの依存関係構築)
 	// ----------------------------------------------------------------
+
+	// GCS クライアントの初期化 (リソース再利用のため、ここで一度だけ初期化)
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GCSクライアントの初期化に失敗しました: %w", err)
+	}
+
+	// 呼び出し元が defer gcsClientCloser() でクローズできるようにクリーンアップ関数を定義
+	gcsClientCloser := func() {
+		gcsClient.Close()
+	}
 
 	// 1.1 HTTP クライアント (Fetcher) の構築
 	clientOptions := []httpkit.ClientOption{
@@ -28,7 +44,8 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// 1.2 Extractor (Webコンテンツ抽出ロジック) の構築
 	extractor, err := extract.NewExtractor(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
+		gcsClientCloser() // 失敗時はGCSクライアントも閉じる
+		return nil, nil, fmt.Errorf("Extractorの初期化に失敗しました: %w", err)
 	}
 
 	// 1.3 ScraperExecutor (並列実行ロジック) の構築
@@ -39,11 +56,13 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// プロンプトビルダーの初期化
 	mapBuilder := prompts.NewMapPromptBuilder()
 	if err := mapBuilder.Err(); err != nil {
-		return nil, fmt.Errorf("Map Prompt Builderの初期化に失敗しました: %w", err)
+		gcsClientCloser()
+		return nil, nil, fmt.Errorf("Map Prompt Builderの初期化に失敗しました: %w", err)
 	}
 	reduceBuilder := prompts.NewReducePromptBuilder()
 	if err := reduceBuilder.Err(); err != nil {
-		return nil, fmt.Errorf("Reduce Prompt Builderの初期化に失敗しました: %w", err)
+		gcsClientCloser()
+		return nil, nil, fmt.Errorf("Reduce Prompt Builderの初期化に失敗しました: %w", err)
 	}
 
 	// PromptBuilders を構造体にまとめる
@@ -56,13 +75,15 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// APIキーは opts.LLMAPIKey から取得し、Executorの初期化時に使用
 	executor, err := cleaner.NewLLMConcurrentExecutor(ctx, opts.LLMAPIKey, cleaner.DefaultMaxMapConcurrency)
 	if err != nil {
-		return nil, fmt.Errorf("LLM Executorの初期化に失敗しました: %w", err)
+		gcsClientCloser()
+		return nil, nil, fmt.Errorf("LLM Executorの初期化に失敗しました: %w", err)
 	}
 
 	// Cleaner の構築 (builders と executor を注入)
 	contentCleaner, err := cleaner.NewCleaner(builders, executor)
 	if err != nil {
-		return nil, fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+		gcsClientCloser()
+		return nil, nil, fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
 	// ----------------------------------------------------------------
@@ -70,7 +91,8 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 2.1 URLGenerator の構築
-	urlGen := pipeline.NewDefaultURLGeneratorImpl()
+	// 修正: 初期化済みの gcsClient を注入
+	urlGen := pipeline.NewDefaultURLGeneratorImpl(gcsClient)
 
 	// 2.2 ContentFetcher の構築 (ScraperExecutorとExtractorを注入)
 	fetcher := pipeline.NewWebContentFetcherImpl(scraperExecutor, extractor)
@@ -82,6 +104,6 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// 3. Pipeline の構築 (DIの実行)
 	// ----------------------------------------------------------------
 
-	// 全てのステージとオプションをPipelineに注入
-	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), nil
+	// 全てのステージとオプションをPipelineに注入し、クリーンアップ関数も一緒に返す
+	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), gcsClientCloser, nil
 }
