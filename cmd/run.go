@@ -72,8 +72,13 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		OutputFilePath:     outputFilePath,
 		MaxScraperParallel: maxScraperParallel,
 	}
+
+	// LLMTimeout に基づいてパイプライン全体のコンテキストを作成
+	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
+	defer cancel()
+
 	// 1. パイプラインの構築
-	p, err := builder.BuildPipeline(opts)
+	p, err := builder.BuildPipeline(ctx, opts)
 	if err != nil {
 		// パイプライン構築が失敗した場合（例: Extractor初期化失敗など）
 		return fmt.Errorf("パイプラインの構築に失敗しました: %w", err)
@@ -81,8 +86,6 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 
 	// 2. パイプラインの実行
 	// Execute は、内部のすべての処理（URL生成、コンテンツ取得、クリーンアップ、ファイル出力）からのエラーをラップして返します。
-	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
-	defer cancel()
 	if err := p.Execute(ctx); err != nil {
 		return fmt.Errorf("パイプラインの実行中にエラーが発生しました: %w", err)
 	}
