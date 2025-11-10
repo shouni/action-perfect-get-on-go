@@ -111,6 +111,12 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 				resultsChan <- MapResult{Err: fmt.Errorf("セグメント %d 処理失敗 (URL: %s): %w", index+1, s.URL, err)}
 				return
 			}
+			slog.Info(
+				"セグメント処理成功",
+				"index", index+1,
+				"url", s.URL,
+				"summary_len", len(response.Text),
+			)
 
 			resultsChan <- MapResult{Summary: response.Text, Err: nil}
 		}(i, seg)
