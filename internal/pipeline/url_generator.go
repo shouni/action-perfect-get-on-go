@@ -26,7 +26,8 @@ func (d *DefaultURLGeneratorImpl) Generate(ctx context.Context, opts CmdOptions)
 		return nil, fmt.Errorf("処理対象のURLを指定してください。-f/--url-file オプションでURLリストファイルを指定してください。")
 	}
 
-	urls, err := d.readURLsFromFile(opts.URLFile)
+	// 呼び出し元でctxを渡すように修正
+	urls, err := d.readURLsFromFile(ctx, opts.URLFile)
 	if err != nil {
 		return nil, fmt.Errorf("URLファイルの読み込みに失敗しました: %w", err)
 	}
@@ -38,17 +39,24 @@ func (d *DefaultURLGeneratorImpl) Generate(ctx context.Context, opts CmdOptions)
 }
 
 // readURLsFromFileは指定されたファイルからURLを読み込みます。(元のヘルパー関数から移動)
-func (*DefaultURLGeneratorImpl) readURLsFromFile(filePath string) ([]string, error) {
+// ctx context.Context を引数に追加
+func (*DefaultURLGeneratorImpl) readURLsFromFile(ctx context.Context, filePath string) ([]string, error) {
 	var reader io.Reader
-	ctx := context.Background()
+	// ctx は引数として渡されるため、context.Background() は削除
 
 	if strings.HasPrefix(filePath, "gs://") {
 		// GCS URI の処理
+		// 修正1: context.Background() ではなく、渡された ctx を使用
 		client, err := storage.NewClient(ctx)
 		if err != nil {
+			// GCSクライアントの初期化エラーの場合、clientはnil
 			return nil, fmt.Errorf("GCSクライアントの初期化に失敗しました: %w", err)
 		}
-		defer client.Close()
+
+		// 修正2: client が nil でないことを確認してから defer client.Close() を実行
+		if client != nil {
+			defer client.Close()
+		}
 
 		// gs://bucket-name/object-name からバケット名とオブジェクト名を取得
 		// filePath[5:] は "gs://" を除いた部分
@@ -59,7 +67,7 @@ func (*DefaultURLGeneratorImpl) readURLsFromFile(filePath string) ([]string, err
 		bucketName := parts[0]
 		objectName := parts[1]
 
-		// GCS オブジェクトリーダーを作成
+		// GCS オブジェクトリーダーを作成（ここでも ctx を使用）
 		rc, err := client.Bucket(bucketName).Object(objectName).NewReader(ctx)
 		if err != nil {
 			// NewReader がエラーを返す場合、ファイルが存在しないか、権限がない
