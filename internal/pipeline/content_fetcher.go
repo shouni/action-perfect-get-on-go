@@ -31,7 +31,7 @@ func NewWebContentFetcherImpl(scraperRunner ScraperRunner) *WebContentFetcherImp
 // リトライ、遅延、分類のロジックは ScraperRunner (ReliableScraper) 側で完結します。
 func (w *WebContentFetcherImpl) Fetch(ctx context.Context, opts CmdOptions, urls []string) ([]extTypes.URLResult, error) {
 	// ログメッセージの参照名を修正
-	slog.Info("Webコンテンツの抽出処理を ScraperRunner に委譲します。")
+	slog.Info("Webコンテンツの抽出処理を ScraperRunner に委譲します。", slog.Int("total_urls", len(urls)))
 
 	// 注入された ScraperRunner (ReliableScraper) が、並列実行とリトライの両方を処理します。
 	successfulResults := w.scraperRunner.ScrapeInParallel(ctx, urls)
