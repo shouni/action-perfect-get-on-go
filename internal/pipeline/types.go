@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"io"
 	"time"
 
 	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
@@ -42,6 +43,20 @@ type ContentFetcher interface {
 type OutputGenerator interface {
 	// Generate はコンテンツを結合し、LLMで構造化し、最終結果をファイルに出力します。
 	Generate(ctx context.Context, opts CmdOptions, results []extTypes.URLResult) error
+}
+
+// ScraperRunner は並列スクレイピングを実行する外部依存の抽象化です。
+// ContentFetcher の具象実装が内部で使用するサブ依存として定義されます。
+type ScraperRunner interface {
+	ScrapeInParallel(ctx context.Context, urls []string) []extTypes.URLResult
+}
+
+// InputReader は、抽象化された入力ストリームを開くための契約です。
+// これにより、GCSやローカルファイルへのアクセスロジックを分離します。
+type InputReader interface {
+	// Open は、指定されたパス（またはURI）から読み取り可能なストリームを開き、
+	// io.ReadCloser を返します。
+	Open(ctx context.Context, path string) (io.ReadCloser, error)
 }
 
 // ----------------------------------------------------------------
