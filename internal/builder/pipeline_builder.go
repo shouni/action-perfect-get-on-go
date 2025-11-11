@@ -38,6 +38,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// BuildReliableScraperExecutor を呼び出し、リトライ実行者を取得
 	scraperExecutor, err := builder.BuildReliableScraperExecutor(opts.ScraperTimeout, opts.MaxScraperParallel)
 	if err != nil {
+		// 失敗時はGCSクライアントを閉じる
 		return nil, gcsClientCloser, fmt.Errorf("ReliableScraperExecutorの初期化に失敗しました: %w", err)
 	}
 
@@ -78,7 +79,10 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1 URLGenerator の構築
-	urlGen := pipeline.NewDefaultURLGeneratorImpl(gcsClient)
+	// NewLocalGCSInputReader を使用して InputReader の具象実装を作成し、
+	// それを NewDefaultURLGeneratorImpl に注入するように修正。
+	urlReader := pipeline.NewLocalGCSInputReader(gcsClient)
+	urlGen := pipeline.NewDefaultURLGeneratorImpl(urlReader)
 
 	// 4.2 ContentFetcher の構築
 	fetcher := pipeline.NewWebContentFetcherImpl(scraperExecutor)
