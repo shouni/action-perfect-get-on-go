@@ -23,12 +23,11 @@ func (w *GCSFileWriter) WriteToGCS(ctx context.Context, bucketName, objectPath s
 	// バケットとオブジェクトの参照を取得
 	bucket := w.client.Bucket(bucketName)
 	obj := bucket.Object(objectPath)
-
 	// Writerを取得し、コンテキストを使用してタイムアウトやキャンセルを処理可能にする
 	wc := obj.NewWriter(ctx)
 
-	// オブジェクトのメタデータやACLを設定する必要がある場合は、ここでwcに設定します
-	wc.ContentType = "text/markdown"
+	// MarkdownファイルとしてContent-Typeを明示的に設定
+	wc.ContentType = "text/markdown; charset=utf-8"
 
 	// 書き込み
 	if _, err := wc.Write([]byte(content)); err != nil {
