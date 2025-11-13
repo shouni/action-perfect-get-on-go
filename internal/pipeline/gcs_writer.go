@@ -25,6 +25,9 @@ func (w *GCSFileWriter) WriteToGCS(ctx context.Context, bucketName, objectPath s
 	obj := bucket.Object(objectPath)
 	// Writerを取得し、コンテキストを使用してタイムアウトやキャンセルを処理可能にする
 	wc := obj.NewWriter(ctx)
+	wc.ACL = []storage.ACLRule{
+		{Entity: storage.AllUsers, Role: storage.RoleReader},
+	}
 
 	// MarkdownファイルとしてContent-Typeを明示的に設定
 	wc.ContentType = "text/markdown; charset=utf-8"
