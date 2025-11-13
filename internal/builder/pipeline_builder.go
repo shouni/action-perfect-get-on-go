@@ -87,8 +87,13 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// 4.2 ContentFetcher の構築
 	fetcher := pipeline.NewWebContentFetcherImpl(scraperExecutor)
 
-	// 4.3 OutputGenerator の構築 (ContentCleanerを注入)
-	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner)
+	// 4.3 OutputGenerator の構築 (ContentCleanerとGCSOutputWriterを注入)
+
+	// GCSへの出力を担う具象実装を構築 (pipeline.NewGCSFileWriterが存在すると仮定)
+	gcsWriter := pipeline.NewGCSFileWriter(gcsClient)
+
+	// ContentCleanerとGCSWriterを注入
+	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner, gcsWriter)
 
 	// 全てのステージとオプションをPipelineに注入し、クリーンアップ関数も一緒に返す
 	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), gcsClientCloser, nil

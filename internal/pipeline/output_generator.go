@@ -13,7 +13,11 @@ import (
 	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
 
-const previewLines = 10
+const (
+	previewLines     = 10
+	gcsPrefix        = "gs://" // GCS URIのプレフィックス
+	gcsPathSeparator = "/"
+)
 
 // ----------------------------------------------------------------
 // 依存関係インターフェースの定義 (DIのため)
@@ -24,6 +28,12 @@ type ContentCleaner interface {
 	CleanAndStructureText(ctx context.Context, results []extTypes.URLResult) (string, error)
 }
 
+// GCSOutputWriter はGCSへの出力処理の抽象化です。
+// WriteToGCS は指定されたバケットとパスにコンテンツを書き込みます。
+type GCSOutputWriter interface {
+	WriteToGCS(ctx context.Context, bucket, path string, content string) error
+}
+
 // ----------------------------------------------------------------
 // 具象実装
 // ----------------------------------------------------------------
@@ -32,12 +42,14 @@ type ContentCleaner interface {
 // 依存関係はコンストラクタで注入されます。
 type LLMOutputGeneratorImpl struct {
 	contentCleaner ContentCleaner
+	gcsWriter      GCSOutputWriter
 }
 
 // NewLLMOutputGeneratorImpl は LLMOutputGeneratorImpl の新しいインスタンスを作成します。
-func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner) *LLMOutputGeneratorImpl {
+func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, gcsWriter GCSOutputWriter) *LLMOutputGeneratorImpl {
 	return &LLMOutputGeneratorImpl{
 		contentCleaner: contentCleaner,
+		gcsWriter:      gcsWriter,
 	}
 }
 
@@ -55,12 +67,75 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
 	}
 
-	// 最終結果の出力 (iohandlerパッケージを使用)
-	if err := l.writeOutputString(opts.OutputFilePath, cleanedText); err != nil {
-		return fmt.Errorf("最終結果の出力に失敗しました: %w", err)
+	// ----------------------------------------------------------------
+	// 最終結果の出力処理
+	// ----------------------------------------------------------------
+
+	outputFilePath := opts.OutputFilePath
+	hasGCSOutput := strings.HasPrefix(outputFilePath, gcsPrefix)
+
+	if hasGCSOutput {
+		// GCS URIをバケット名とパスに分解
+		bucket, path, err := l.parseGCSURI(outputFilePath)
+		if err != nil {
+			return fmt.Errorf("GCS URIのパースに失敗しました: %w", err)
+		}
+
+		// 1. GCSへの出力
+		if err := l.writeToGCS(ctx, bucket, path, cleanedText); err != nil {
+			return fmt.Errorf("GCSへの最終結果の出力に失敗しました: %w", err)
+		}
+
+		slog.Info("GCS出力が指定されているため、ローカルファイルへの書き込み/標準出力プレビューはスキップされました。")
+
+	} else {
+		// 2. ローカルファイル/標準出力への出力 (GCS出力が指定されていない場合のみ実行)
+		if err := l.writeOutputString(outputFilePath, cleanedText); err != nil {
+			return fmt.Errorf("ローカルファイル/標準出力への最終結果の出力に失敗しました: %w", err)
+		}
 	}
 
-	slog.Info("LLMによる構造化が完了し、ファイルに出力されました。")
+	slog.Info("LLMによる構造化と出力が完了しました。")
+	return nil
+}
+
+// parseGCSURI は "gs://bucket/path/to/object" 形式のURIをバケット名とパスに分解します。
+func (l *LLMOutputGeneratorImpl) parseGCSURI(uri string) (bucket, path string, err error) {
+	if !strings.HasPrefix(uri, gcsPrefix) {
+		return "", "", fmt.Errorf("URIは '%s' で始まっていません: %s", gcsPrefix, uri)
+	}
+
+	// "gs://" を取り除く
+	trimmedURI := strings.TrimPrefix(uri, gcsPrefix)
+
+	// 最初の '/' でバケットとパスを分割
+	parts := strings.SplitN(trimmedURI, gcsPathSeparator, 2)
+
+	bucket = parts[0]
+	if bucket == "" {
+		return "", "", fmt.Errorf("GCS URIにバケット名が指定されていません: %s", uri)
+	}
+
+	path = ""
+	if len(parts) > 1 {
+		path = parts[1]
+	} else {
+		// gs://bucket/ の形式でパスがない場合はエラーとする
+		return "", "", fmt.Errorf("GCS URIにオブジェクトパスが指定されていません: %s", uri)
+	}
+
+	return bucket, path, nil
+}
+
+// writeToGCS は、注入されたGCSOutputWriterを使ってGCSへ内容を書き出します。
+func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path string, content string) error {
+	slog.Info("最終生成結果をGCSに書き込みます", slog.String("bucket", bucket), slog.String("path", path))
+
+	if err := l.gcsWriter.WriteToGCS(ctx, bucket, path, content); err != nil {
+		return fmt.Errorf("GCSバケット '%s' パス '%s' への書き込みに失敗しました: %w", bucket, path, err)
+	}
+
+	slog.Info("最終生成完了 - GCSに書き込みました", slog.String("uri", fmt.Sprintf("gs://%s/%s", bucket, path)))
 	return nil
 }
 
