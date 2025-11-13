@@ -54,14 +54,13 @@ func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, gcsWriter GCSOutpu
 }
 
 // Generate は、取得したコンテンツをLLMでクリーンアップ・構造化し、ファイルに出力します。
+// GCS出力が指定された場合、ローカル出力はスキップされます。
 func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, successfulResults []extTypes.URLResult) error {
 	slog.Info("フェーズ2 - 抽出結果を基に、AIクリーンアップと構造化を開始します。", slog.Int("count", len(successfulResults)))
 
 	// AIクリーンアップフェーズ (LLM) (注入されたcontentCleanerを使用)
 	slog.Info("フェーズ3 - LLMによるテキストのクリーンアップと構造化を開始します (Go-AI-Client利用)。")
 
-	// 修正: llmAPIKey を渡す引数を削除しました。
-	// ContentCleaner インターフェースの定義が変更されたため、呼び出し側も修正します。
 	cleanedText, err := l.contentCleaner.CleanAndStructureText(ctx, successfulResults)
 	if err != nil {
 		return fmt.Errorf("LLMクリーンアップ処理に失敗しました: %w", err)
@@ -75,23 +74,33 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	hasGCSOutput := strings.HasPrefix(outputFilePath, gcsPrefix)
 
 	if hasGCSOutput {
-		// GCS URIをバケット名とパスに分解
+		// GCSへの出力パス
 		bucket, path, err := l.parseGCSURI(outputFilePath)
 		if err != nil {
 			return fmt.Errorf("GCS URIのパースに失敗しました: %w", err)
 		}
 
-		// 1. GCSへの出力
+		// GCSへの出力実行
 		if err := l.writeToGCS(ctx, bucket, path, cleanedText); err != nil {
 			return fmt.Errorf("GCSへの最終結果の出力に失敗しました: %w", err)
 		}
 
-		slog.Info("GCS出力が指定されているため、ローカルファイルへの書き込み/標準出力プレビューはスキップされました。")
+		// GCSへの書き込みが完了したら、ローカル出力/標準出力の処理をスキップして終了
+		slog.Info("LLMによる構造化とGCSへの出力が完了しました。", slog.String("uri", outputFilePath))
+		return nil
+	}
 
-	} else {
-		// 2. ローカルファイル/標準出力への出力 (GCS出力が指定されていない場合のみ実行)
+	// GCSへの出力ではない場合（ローカルファイルまたは標準出力）
+
+	// 2. ローカルファイルへの出力 (パスが空でない場合)
+	if outputFilePath != "" {
 		if err := l.writeOutputString(outputFilePath, cleanedText); err != nil {
-			return fmt.Errorf("ローカルファイル/標準出力への最終結果の出力に失敗しました: %w", err)
+			return fmt.Errorf("ローカルファイルへの最終結果の出力に失敗しました: %w", err)
+		}
+	} else {
+		// 3. 標準出力への出力（outputFilePath == "" の場合）
+		if err := l.outputPreview(cleanedText); err != nil {
+			return err
 		}
 	}
 
@@ -158,17 +167,12 @@ func (l *LLMOutputGeneratorImpl) writeOutputString(filename string, content stri
 		return nil
 	}
 
-	err := l.outputPreview(content)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("writeOutputStringが空のファイル名で呼び出されました。")
 }
 
-// outputPreview は、ファイルまたは標準出力にプレビューを書き出します。
+// outputPreview は、標準出力にプレビューを書き出します。
 func (l *LLMOutputGeneratorImpl) outputPreview(content string) error {
-	// 3. 標準出力にファイルの冒頭10行を表示
+	// 標準出力にファイルの冒頭10行を表示
 	lines := strings.Split(content, "\n")
 	previewContent := ""
 	if len(lines) > 0 {
@@ -180,6 +184,7 @@ func (l *LLMOutputGeneratorImpl) outputPreview(content string) error {
 		previewContent = strings.Join(lines[:end], "\n")
 	}
 
+	slog.Info("最終生成結果を標準出力にプレビュー表示します (冒頭10行)。")
 	return iohandler.WriteOutputString("", previewContent)
 }
 
