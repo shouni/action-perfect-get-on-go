@@ -28,6 +28,11 @@ type ContentCleaner interface {
 	CleanAndStructureText(ctx context.Context, results []extTypes.URLResult) (string, error)
 }
 
+// MdToHtmlRunner は、github.com/shouni/go-text-format/pkg/runner.MarkdownToHtmlRunner インターフェースと一致するよう定義します。
+type MdToHtmlRunner interface {
+	ConvertMarkdownToHtml(ctx context.Context, title string, markdown []byte) (*bytes.Buffer, error)
+}
+
 // ----------------------------------------------------------------
 // 具象実装
 // ----------------------------------------------------------------
@@ -37,13 +42,15 @@ type ContentCleaner interface {
 type LLMOutputGeneratorImpl struct {
 	contentCleaner  ContentCleaner
 	universalWriter Writer
+	htmlRunner      MdToHtmlRunner
 }
 
 // NewLLMOutputGeneratorImpl は LLMOutputGeneratorImpl の新しいインスタンスを作成します。
-func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, writer Writer) *LLMOutputGeneratorImpl {
+func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, writer Writer, htmlRunner MdToHtmlRunner) *LLMOutputGeneratorImpl {
 	return &LLMOutputGeneratorImpl{
 		contentCleaner:  contentCleaner,
-		universalWriter: writer, // 注入されたユニバーサルライター
+		universalWriter: writer,
+		htmlRunner:      htmlRunner,
 	}
 }
 
@@ -71,6 +78,13 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	contentReader := bytes.NewReader([]byte(cleanedText))
 
 	if hasGCSOutput {
+		slog.Info("LLMによって生成されたMarkdownをHTMLドキュメントに変換します。")
+		htmlBuffer, err := l.htmlRunner.ConvertMarkdownToHtml(ctx, "", []byte(cleanedText))
+		if err != nil {
+			return fmt.Errorf("MarkdownからHTMLへの変換に失敗しました: %w", err)
+		}
+		contentReader = bytes.NewReader(htmlBuffer.Bytes())
+
 		// GCSへの出力パス
 		bucket, path, err := remoteio.ParseGCSURI(outputFilePath)
 		if err != nil {
@@ -113,7 +127,7 @@ func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path st
 		return fmt.Errorf("内部エラー: 注入された Writer は GCSOutputWriter インターフェースを満たしていません")
 	}
 
-	if err := gcsWriter.WriteToGCS(ctx, bucket, path, contentReader, "text/markdown; charset=utf-8"); err != nil {
+	if err := gcsWriter.WriteToGCS(ctx, bucket, path, contentReader, "text/html; charset=utf-8"); err != nil {
 		return fmt.Errorf("GCSバケット '%s' パス '%s' への書き込みに失敗しました: %w", bucket, path, err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
 	remoteioFactory "github.com/shouni/go-remote-io/pkg/factory"
+	textformatbuilder "github.com/shouni/go-text-format/pkg/builder"
 	"github.com/shouni/web-text-pipe-go/pkg/builder"
 )
 
@@ -77,7 +78,23 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	}
 
 	// ----------------------------------------------------------------
-	// 4. パイプラインステージの実装とPipelineの構築 (DIの実行)
+	// 4. Go-Text-Format Runner の構築 (新規)
+	// ----------------------------------------------------------------
+
+	// 4.1. Text Format Builderの構築 (Converter/Rendererを内部で初期化)
+	textFormatBuilder, err := textformatbuilder.NewBuilder()
+	if err != nil {
+		return nil, closer, fmt.Errorf("Text Format Builderの初期化に失敗しました: %w", err)
+	}
+
+	// 4.2. MarkdownToHtmlRunner の構築 (Converter/Rendererを注入)
+	htmlRunner, err := textFormatBuilder.BuildMarkdownToHtmlRunner()
+	if err != nil {
+		return nil, closer, fmt.Errorf("MarkdownToHtmlRunnerの構築に失敗しました: %w", err)
+	}
+
+	// ----------------------------------------------------------------
+	// 5. パイプラインステージの実装とPipelineの構築 (DIの実行)
 	// ----------------------------------------------------------------
 
 	// 4.1 URLGenerator の構築
@@ -104,8 +121,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 		return nil, closer, fmt.Errorf("生成されたWriterが pipeline.Writer インターフェース (GCS/Localの両機能) を満たしていません")
 	}
 
-	// ContentCleanerとOutputWriterを注入 (修正されたoutputWriterを使用)
-	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner, outputWriter)
+	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner, outputWriter, htmlRunner)
 
 	// 全てのステージとオプションをPipelineに注入し、クリーンアップ関数も一緒に返す
 	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), closer, nil

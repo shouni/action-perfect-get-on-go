@@ -109,6 +109,8 @@ github.com/shouni/go-http-kit v1.1.2 h1:hVhVSjF1yLt9kMJbI5yFYQvANuHCH3so7ynhCiXb
 github.com/shouni/go-http-kit v1.1.2/go.mod h1:CFk1CJbTqRskKB70qbn+q2fVyH9zXNp9KWQuWp/lwFY=
 github.com/shouni/go-remote-io v1.0.2 h1:a+ddRK53T27EUQNJAZB/SR66hPHFHUaNg324U+jxDq8=
 github.com/shouni/go-remote-io v1.0.2/go.mod h1:YGdhD9dK8TMwcrp5mL+lgfqoWEAbsNQeckWik3yopG8=
+github.com/shouni/go-text-format v1.0.3 h1:1BZI07JrXGE2z+5UQV8VKYPnZwzXAgD328o78YUS1Zw=
+github.com/shouni/go-text-format v1.0.3/go.mod h1:jgavvaEGvDoHRh9NRTmFepROeAKTlDbqUNEquZfiMQE=
 github.com/shouni/go-utils v1.0.11 h1:X818DZWQZqEH5BPqWPhJP89k9r234aTJzzkmoU2y0cs=
 github.com/shouni/go-utils v1.0.11/go.mod h1:dQxOuVTvWFHWEH/G6izteLh+tubkI5Sl1jpDWlCSkBU=
 github.com/shouni/go-web-exact/v2 v2.0.13 h1:GMwj/0tP96B8VGBQ0yhe8+dYI4lD6ImIC4Kdra1xptM=
@@ -127,6 +129,8 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+github.com/yuin/goldmark v1.7.13 h1:GPddIs617DnBLFFVJFgpo1aBfe/4xcvMc3SB5t/D0pA=
+github.com/yuin/goldmark v1.7.13/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 github.com/zeebo/errs v1.4.0 h1:XNdoD/RRMKP7HD0UhJnIzUy74ISdGGxURlYG8HSWSfM=
 github.com/zeebo/errs v1.4.0/go.mod h1:sgbWHsvVuTPHcqJJGQ1WhI5KbWlHYz+2+2C/LSEtCw4=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=

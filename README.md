@@ -9,7 +9,7 @@
 
 **Action Perfect Get On Go** は、複数のウェブページから本文を**並列で高速に取得**し、その結合されたテキストを **LLM（大規模言語モデル）** の**マルチステップ処理**によって**情報欠落なく重複排除**、**重要な情報を保持したまま、情報密度の高い簡潔な文章に**論理的に構造化する、**高い保守性と堅牢性**を備えたコマンドラインツールです。
 
-このツールは、**ローカルファイルパス**に加えて、**Google Cloud Storage (GCS) バケット内のファイル**からでも、処理対象のURLリストを**透過的に読み込む**ことができます。**また、最終的な構造化結果も、ローカルファイルパスまたは GCS URI (`gs://...`) を出力先として、柔軟に書き出すことが可能です。** 初期からの並列処理での負荷や一時的なネットワークエラーに耐えるための**堅牢なリトライ・遅延メカニズム**を備えており、**明確に分離されたDIパイプライン設計**により、高い保守性を実現しています。
+このツールは、**ローカルファイルパス**に加えて、**Google Cloud Storage (GCS) バケット内のファイル**からでも、処理対象のURLリストを**透過的に読み込む**ことができます。また、最終的な構造化結果は、**自動的に完全なHTMLドキュメントに変換され**、ローカルファイルパスまたは GCS URI (`gs://...`) を出力先として、柔軟に書き出すことが可能です。初期からの並列処理での負荷や一時的なネットワークエラーに耐えるための**堅牢なリトライ・遅延メカニズム**を備えており、**明確に分離されたDIパイプライン設計**により、高い保守性を実現しています。
 
 -----
 
@@ -51,6 +51,7 @@
 | **Web抽出** | **[`github.com/shouni/go-web-exact`](https://github.com/shouni/go-web-exact)** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
 | **AI通信** | **[`github.com/shouni/go-ai-client`](https://github.com/shouni/go-ai-client)** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
 | **I/O, GCS** | **[`github.com/shouni/go-remote-io`](https://github.com/shouni/go-remote-io))** | ローカルファイルとGCSへの**透過的な入出力**を抽象化し、パイプラインのI/O責務を分離します。 |
+| **HTML変換** | **[`github.com/shouni/go-text-format`](https://github.com/shouni/go-text-format))** | LLMが出力したMarkdownを**完全なHTMLドキュメント**に変換・レンダリングします。 |
 | **プロンプト** | **`text/template`, `embed`** | プロンプトを外部ファイル化し、**テンプレートパースのコストを抑えた**効率的なプロンプト生成ロジックを実現します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセス、およびLLMマルチステップ処理における**中間要約の生成 (Mapフェーズ)** を並列で高速に実行します。 |
 | **設計パターン** | **依存性注入 (DI) / パイプライン** / **ビルダーパターン** | 処理フロー全体を構造化し、モック化と保守性を向上させます。**I/Oとクライアントの構築は、外部の`factory`パッケージに委譲**され、`internal/builder`は注入の調整役のみを担います。 |
@@ -67,7 +68,7 @@
 | :--- | :--- | :--- |
 | **Stage 1: URL生成** | `pipeline.URLGenerator` | 依存性注入された `pipeline.InputReader` を使用し、GCS URIまたはローカルファイルからURLリストを読み込み、処理対象のURLを抽出する。 |
 | **Stage 2: コンテンツ取得** | `pipeline.ContentFetcher` | **並列スクレイピング**と堅牢なリトライを実行し、本文コンテンツを抽出する。 |
-| **Stage 3: AIクリーンアップ・出力** | `pipeline.LLMOutputGenerator` | 抽出コンテンツを結合し、**MapReduce**処理（`cleaner.Cleaner`）を実行して最終結果を**柔軟に出力**する。 |
+| **Stage 3: AIクリーンアップ・出力** | `pipeline.LLMOutputGenerator` | 抽出コンテンツを結合し、**MapReduce**処理（`cleaner.Cleaner`）を実行して最終結果を**HTMLドキュメントとして柔軟に出力**する。 |
 
 ### 2\. Stage 3 内部 (LLM MapReduceフロー)
 
@@ -80,7 +81,7 @@ Stage 3（AIクリーンアップ）の処理は、`cleaner.Cleaner`が以下の
 3.  **Reduceフェーズ (単一実行)**:
     * すべての中間要約を統合し、LLMに送り、最終的な**重複排除、論理的な構造化**を実行する。
     * **結果の付与**: この際、統合に用いられた各ソースURLが、関連する主要セクション（`##`）の直下にリストとして挿入される。
-4.  **出力**: LLMが構造化した最終的なテキスト（Markdown形式）が、**`--output`で指定されたパス（ローカルまたはGCS）** に書き込まれる。
+4.  **出力**: LLMが構造化した最終的なテキスト（Markdown形式）が、**`go-text-format`によって完全なHTMLドキュメントに変換された後**、**`--output`で指定されたパス（ローカルまたはGCS）** に書き込まれる。
 
 -----
 
@@ -163,16 +164,18 @@ https://example.com/page-c/specification
 
 ```bash
 # 最小実行形式 (ローカルファイルから読み込み、結果は標準出力)
+# 標準出力へはMarkdown形式のプレビューが出力されます。
 ./bin/llm_cleaner run -f ./urls.txt
 
 # 推奨実行形式 (APIキー、カスタムタイムアウト、ローカルファイルに出力)
-./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m -p 5 -o ./output/summary.md
+# 出力ファイルは完全なHTMLドキュメント (output.html) となります。
+./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m -p 5 -o ./output/summary.html
 
 # クラウド運用向け実行形式 (GCSバケットから読み込み、GCSバケットへ書き出し)
 # JobサービスアカウントにGCS読み書き権限が必要です。
 ./bin/llm_cleaner run -k "YOUR_API_KEY" \
-  -f "gs://my-project-input/urls.txt" \
-  -o "gs://my-project-output/summary/result-$(date +%Y%m%d).md"
+  -f "gs://my-project/input/urls.txt" \
+  -o "gs://my-project/output/summary.html"
 ```
 
 -----

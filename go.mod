@@ -3,10 +3,10 @@ module github.com/shouni/action-perfect-get-on-go
 go 1.25
 
 require (
-	cloud.google.com/go/storage v1.57.1
 	github.com/shouni/go-ai-client/v2 v2.0.5
 	github.com/shouni/go-cli-base v1.0.5
 	github.com/shouni/go-remote-io v1.0.2
+	github.com/shouni/go-text-format v1.0.3
 	github.com/shouni/go-utils v1.0.11
 	github.com/shouni/go-web-exact/v2 v2.0.13
 	github.com/shouni/web-text-pipe-go v1.0.10
@@ -21,6 +21,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.8.0 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
 	cloud.google.com/go/monitoring v1.24.2 // indirect
+	cloud.google.com/go/storage v1.57.1 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.29.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.53.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0 // indirect
@@ -53,6 +54,7 @@ require (
 	github.com/shouni/go-http-kit v1.1.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
+	github.com/yuin/goldmark v1.7.13 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.36.0 // indirect
