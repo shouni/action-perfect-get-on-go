@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
@@ -28,8 +29,8 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// FactoryのCloseは func() error 型なので、戻り値の func() に合わせるためのラッパーを定義
 	closer := func() {
 		if closeErr := clientFactory.Close(); closeErr != nil {
-			// エラーをログに出力するなど、適切な処理を行う
-			fmt.Printf("警告: Factoryのクローズ中にエラーが発生しました: %v\n", closeErr)
+			// ★修正: fmt.Printf から slog.Error に変更
+			slog.Error("Factoryのクローズ中にエラーが発生しました", slog.Any("error", closeErr))
 		}
 	}
 
@@ -81,7 +82,6 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1 URLGenerator の構築
-	// ★修正2: clientFactoryを使用
 	urlReader, err := clientFactory.NewInputReader()
 	if err != nil {
 		return nil, closer, fmt.Errorf("InputReaderの生成に失敗しました: %w", err)
