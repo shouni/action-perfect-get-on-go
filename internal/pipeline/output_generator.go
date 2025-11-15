@@ -40,8 +40,6 @@ type LLMOutputGeneratorImpl struct {
 }
 
 // NewLLMOutputGeneratorImpl は LLMOutputGeneratorImpl の新しいインスタンスを作成します。
-// NewLLMOutputGeneratorImpl は remoteio.GCSOutputWriter を引数に取っていましたが、
-// builderパッケージからの呼び出しに合わせるため、ここでは Writer インターフェースを受け取ることにします。
 func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, writer Writer) *LLMOutputGeneratorImpl {
 	return &LLMOutputGeneratorImpl{
 		contentCleaner:  contentCleaner,
@@ -74,7 +72,6 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 
 	if hasGCSOutput {
 		// GCSへの出力パス
-		//		bucket, path, err := l.parseGCSURI(outputFilePath)
 		bucket, path, err := remoteio.ParseGCSURI(outputFilePath)
 		if err != nil {
 			return fmt.Errorf("GCS URIのパースに失敗しました: %w", err)
@@ -116,7 +113,7 @@ func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path st
 		return fmt.Errorf("内部エラー: 注入された Writer は GCSOutputWriter インターフェースを満たしていません")
 	}
 
-	if err := gcsWriter.WriteToGCS(ctx, bucket, path, contentReader, ""); err != nil {
+	if err := gcsWriter.WriteToGCS(ctx, bucket, path, contentReader, "text/markdown; charset=utf-8"); err != nil {
 		return fmt.Errorf("GCSバケット '%s' パス '%s' への書き込みに失敗しました: %w", bucket, path, err)
 	}
 
