@@ -1,7 +1,7 @@
 package pipeline
 
 import (
-	"bytes" // io.Readerとしてコンテンツを渡すために必要
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	previewLines     = 10
-	gcsPrefix        = "gs://" // GCS URIのプレフィックス
-	gcsPathSeparator = "/"
+	previewLines = 10
+	gcsPrefix    = "gs://" // GCS URIのプレフィックス
 )
 
 // ----------------------------------------------------------------
@@ -27,14 +26,6 @@ const (
 // ContentCleaner はLLMによるクリーンアップ処理の抽象化です。
 type ContentCleaner interface {
 	CleanAndStructureText(ctx context.Context, results []extTypes.URLResult) (string, error)
-}
-
-// Writer は、GCSOutputWriterとLocalOutputWriterの両方を満たすインターフェースです。
-// Factoryから注入される具象型が満たす、共通のインターフェースを使用します。
-// LLMOutputGeneratorImpl のフィールド型として使用します。
-type Writer interface {
-	remoteio.GCSOutputWriter
-	remoteio.LocalOutputWriter
 }
 
 // ----------------------------------------------------------------
@@ -83,7 +74,8 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 
 	if hasGCSOutput {
 		// GCSへの出力パス
-		bucket, path, err := l.parseGCSURI(outputFilePath)
+		//		bucket, path, err := l.parseGCSURI(outputFilePath)
+		bucket, path, err := remoteio.ParseGCSURI(outputFilePath)
 		if err != nil {
 			return fmt.Errorf("GCS URIのパースに失敗しました: %w", err)
 		}
@@ -112,34 +104,6 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	}
 
 	return nil
-}
-
-// parseGCSURI は "gs://bucket/path/to/object" 形式のURIをバケット名とパスに分解します。
-func (l *LLMOutputGeneratorImpl) parseGCSURI(uri string) (bucket, path string, err error) {
-	if !strings.HasPrefix(uri, gcsPrefix) {
-		return "", "", fmt.Errorf("URIは '%s' で始まっていません: %s", gcsPrefix, uri)
-	}
-
-	// "gs://" を取り除く
-	trimmedURI := strings.TrimPrefix(uri, gcsPrefix)
-
-	// 最初の '/' でバケットとパスを分割
-	parts := strings.SplitN(trimmedURI, gcsPathSeparator, 2)
-
-	bucket = parts[0]
-	if bucket == "" {
-		return "", "", fmt.Errorf("GCS URIにバケット名が指定されていません: %s", uri)
-	}
-
-	path = ""
-	if len(parts) > 1 {
-		path = parts[1]
-	} else {
-		// gs://bucket/ の形式でパスがない場合はエラーとする
-		return "", "", fmt.Errorf("GCS URIにオブジェクトパスが指定されていません: %s", uri)
-	}
-
-	return bucket, path, nil
 }
 
 // writeToGCS は、注入されたWriterを使ってGCSへ内容を書き出します。
@@ -199,6 +163,3 @@ func (l *LLMOutputGeneratorImpl) outputPreview(content string) error {
 
 // 型アサーションチェック
 var _ ContentCleaner = (*cleaner.Cleaner)(nil)
-
-//// Writerインターフェースが remoteio のインターフェースを満たすことを確認
-//var _ remoteio.GCSOutputWriter = (*LLMOutputGeneratorImpl)(nil) // LLMOutputGeneratorImplはWriterではないため、このチェックは意味がない
