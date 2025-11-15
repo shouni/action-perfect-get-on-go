@@ -50,8 +50,8 @@
 | **CLI** | **Cobra** | コマンドライン引数とオプションの解析に使用します。 |
 | **Web抽出** | **[`github.com/shouni/go-web-exact`](https://github.com/shouni/go-web-exact)** | 任意のウェブページからメインの本文コンテンツを正確に抽出します。 |
 | **AI通信** | **[`github.com/shouni/go-ai-client`](https://github.com/shouni/go-ai-client)** | LLM（Gemini）への通信を管理し、自動リトライ機能を提供します。 |
-| **プロンプト** | **`text/template`, `embed`** | プロンプトを外部ファイル化し、**テンプレートパースのコストを抑えた**効率的なプロンプト生成ロジックを実現します。 |
 | **I/O, GCS** | **[`github.com/shouni/go-remote-io`](https://github.com/shouni/go-remote-io))** | ローカルファイルとGCSへの**透過的な入出力**を抽象化し、パイプラインのI/O責務を分離します。 |
+| **プロンプト** | **`text/template`, `embed`** | プロンプトを外部ファイル化し、**テンプレートパースのコストを抑えた**効率的なプロンプト生成ロジックを実現します。 |
 | **並列処理** | **`sync.WaitGroup` / Goルーチン** | 複数のURLへのアクセス、およびLLMマルチステップ処理における**中間要約の生成 (Mapフェーズ)** を並列で高速に実行します。 |
 | **設計パターン** | **依存性注入 (DI) / パイプライン** / **ビルダーパターン** | 処理フロー全体を構造化し、モック化と保守性を向上させます。**I/Oとクライアントの構築は、外部の`factory`パッケージに委譲**され、`internal/builder`は注入の調整役のみを担います。 |
 
