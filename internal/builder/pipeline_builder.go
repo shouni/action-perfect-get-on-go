@@ -29,7 +29,6 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// FactoryのCloseは func() error 型なので、戻り値の func() に合わせるためのラッパーを定義
 	closer := func() {
 		if closeErr := clientFactory.Close(); closeErr != nil {
-			// ★修正: fmt.Printf から slog.Error に変更
 			slog.Error("Factoryのクローズ中にエラーが発生しました", slog.Any("error", closeErr))
 		}
 	}
