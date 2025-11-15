@@ -1,14 +1,15 @@
 package pipeline
 
 import (
+	"bytes" // io.Readerとしてコンテンツを渡すために必要
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
+	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"github.com/shouni/go-utils/iohandler"
 	extTypes "github.com/shouni/go-web-exact/v2/pkg/types"
 )
@@ -28,10 +29,12 @@ type ContentCleaner interface {
 	CleanAndStructureText(ctx context.Context, results []extTypes.URLResult) (string, error)
 }
 
-// GCSOutputWriter はGCSへの出力処理の抽象化です。
-// WriteToGCS は指定されたバケットとパスにコンテンツを書き込みます。
-type GCSOutputWriter interface {
-	WriteToGCS(ctx context.Context, bucket, path string, content string) error
+// Writer は、GCSOutputWriterとLocalOutputWriterの両方を満たすインターフェースです。
+// Factoryから注入される具象型が満たす、共通のインターフェースを使用します。
+// LLMOutputGeneratorImpl のフィールド型として使用します。
+type Writer interface {
+	remoteio.GCSOutputWriter
+	remoteio.LocalOutputWriter
 }
 
 // ----------------------------------------------------------------
@@ -41,15 +44,17 @@ type GCSOutputWriter interface {
 // LLMOutputGeneratorImpl は OutputGenerator インターフェースの具象実装です。
 // 依存関係はコンストラクタで注入されます。
 type LLMOutputGeneratorImpl struct {
-	contentCleaner ContentCleaner
-	gcsWriter      GCSOutputWriter
+	contentCleaner  ContentCleaner
+	universalWriter Writer
 }
 
 // NewLLMOutputGeneratorImpl は LLMOutputGeneratorImpl の新しいインスタンスを作成します。
-func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, gcsWriter GCSOutputWriter) *LLMOutputGeneratorImpl {
+// NewLLMOutputGeneratorImpl は remoteio.GCSOutputWriter を引数に取っていましたが、
+// builderパッケージからの呼び出しに合わせるため、ここでは Writer インターフェースを受け取ることにします。
+func NewLLMOutputGeneratorImpl(contentCleaner ContentCleaner, writer Writer) *LLMOutputGeneratorImpl {
 	return &LLMOutputGeneratorImpl{
-		contentCleaner: contentCleaner,
-		gcsWriter:      gcsWriter,
+		contentCleaner:  contentCleaner,
+		universalWriter: writer, // 注入されたユニバーサルライター
 	}
 }
 
@@ -73,6 +78,9 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	outputFilePath := opts.OutputFilePath
 	hasGCSOutput := strings.HasPrefix(outputFilePath, gcsPrefix)
 
+	// コンテンツを io.Reader に変換
+	contentReader := bytes.NewReader([]byte(cleanedText))
+
 	if hasGCSOutput {
 		// GCSへの出力パス
 		bucket, path, err := l.parseGCSURI(outputFilePath)
@@ -80,8 +88,7 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 			return fmt.Errorf("GCS URIのパースに失敗しました: %w", err)
 		}
 
-		// GCSへの出力実行
-		if err := l.writeToGCS(ctx, bucket, path, cleanedText); err != nil {
+		if err := l.writeToGCS(ctx, bucket, path, contentReader); err != nil {
 			return fmt.Errorf("GCSへの最終結果の出力に失敗しました: %w", err)
 		}
 
@@ -90,21 +97,20 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 		return nil
 	}
 
-	// GCSへの出力ではない場合（ローカルファイルまたは標準出力）
-
 	// 2. ローカルファイルへの出力 (パスが空でない場合)
 	if outputFilePath != "" {
-		if err := l.writeOutputString(outputFilePath, cleanedText); err != nil {
+		if err := l.writeToLocal(ctx, outputFilePath, contentReader); err != nil {
 			return fmt.Errorf("ローカルファイルへの最終結果の出力に失敗しました: %w", err)
 		}
+		slog.Info("LLMによる構造化とローカルファイルへの出力が完了しました。", slog.String("file", outputFilePath))
 	} else {
 		// 3. 標準出力への出力（outputFilePath == "" の場合）
 		if err := l.outputPreview(cleanedText); err != nil {
 			return err
 		}
+		slog.Info("LLMによる構造化と標準出力へのプレビューが完了しました。")
 	}
 
-	slog.Info("LLMによる構造化と出力が完了しました。")
 	return nil
 }
 
@@ -136,11 +142,17 @@ func (l *LLMOutputGeneratorImpl) parseGCSURI(uri string) (bucket, path string, e
 	return bucket, path, nil
 }
 
-// writeToGCS は、注入されたGCSOutputWriterを使ってGCSへ内容を書き出します。
-func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path string, content string) error {
+// writeToGCS は、注入されたWriterを使ってGCSへ内容を書き出します。
+func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path string, contentReader io.Reader) error {
 	slog.Info("最終生成結果をGCSに書き込みます", slog.String("bucket", bucket), slog.String("path", path))
 
-	if err := l.gcsWriter.WriteToGCS(ctx, bucket, path, content); err != nil {
+	// 注入された Writer が remoteio.GCSOutputWriter を満たすことを確認
+	gcsWriter, ok := l.universalWriter.(remoteio.GCSOutputWriter)
+	if !ok {
+		return fmt.Errorf("内部エラー: 注入された Writer は GCSOutputWriter インターフェースを満たしていません")
+	}
+
+	if err := gcsWriter.WriteToGCS(ctx, bucket, path, contentReader, ""); err != nil {
 		return fmt.Errorf("GCSバケット '%s' パス '%s' への書き込みに失敗しました: %w", bucket, path, err)
 	}
 
@@ -148,26 +160,22 @@ func (l *LLMOutputGeneratorImpl) writeToGCS(ctx context.Context, bucket, path st
 	return nil
 }
 
-// WriteOutputString は、ファイルまたは標準出力に内容を書き出します。
-// ファイル名が指定された場合、ディレクトリが存在しなければ作成し、ファイルに書き込みます。
-func (l *LLMOutputGeneratorImpl) writeOutputString(filename string, content string) error {
-	if filename != "" {
-		// 1. ディレクトリの作成 (存在しない場合は再帰的に作成)
-		dir := filepath.Dir(filename)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("ディレクトリの作成に失敗しました (%s): %w", dir, err)
-		}
+// writeToLocal ローカルファイルへの書き込み
+func (l *LLMOutputGeneratorImpl) writeToLocal(ctx context.Context, path string, contentReader io.Reader) error {
+	slog.Info("最終生成結果をローカルファイルに書き込みます", slog.String("path", path))
 
-		// 2. ファイルへの書き込み
-		if err := iohandler.WriteOutputString(filename, content); err != nil {
-			return fmt.Errorf("ファイルへの書き込みに失敗しました: %w", err)
-		}
-		slog.Info("最終生成完了 - ファイルに書き込みました", slog.String("file", filename))
-
-		return nil
+	// 注入された Writer が remoteio.LocalOutputWriter を満たすことを確認
+	localWriter, ok := l.universalWriter.(remoteio.LocalOutputWriter)
+	if !ok {
+		return fmt.Errorf("内部エラー: 注入された Writer は LocalOutputWriter インターフェースを満たしていません")
 	}
 
-	return fmt.Errorf("writeOutputStringが空のファイル名で呼び出されました。")
+	if err := localWriter.WriteToLocal(ctx, path, contentReader); err != nil {
+		return fmt.Errorf("ローカルファイル '%s' への書き込みに失敗しました: %w", path, err)
+	}
+
+	slog.Info("最終生成完了 - ローカルファイルに書き込みました", slog.String("file", path))
+	return nil
 }
 
 // outputPreview は、標準出力にプレビューを書き出します。
@@ -185,8 +193,12 @@ func (l *LLMOutputGeneratorImpl) outputPreview(content string) error {
 	}
 
 	slog.Info("最終生成結果を標準出力にプレビュー表示します (冒頭10行)。")
+	// iohandler.WriteOutputString は string を受け取るため、ここではそのまま利用
 	return iohandler.WriteOutputString("", previewContent)
 }
 
 // 型アサーションチェック
 var _ ContentCleaner = (*cleaner.Cleaner)(nil)
+
+//// Writerインターフェースが remoteio のインターフェースを満たすことを確認
+//var _ remoteio.GCSOutputWriter = (*LLMOutputGeneratorImpl)(nil) // LLMOutputGeneratorImplはWriterではないため、このチェックは意味がない

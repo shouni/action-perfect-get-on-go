@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"cloud.google.com/go/storage"
-
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
+	"github.com/shouni/go-remote-io/pkg/factory"
 	"github.com/shouni/web-text-pipe-go/pkg/builder"
 )
 
@@ -17,18 +16,21 @@ import (
 func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pipeline, func(), error) {
 
 	// ----------------------------------------------------------------
-	// 1. GCS クライアントの初期化とクリーンアップ設定
+	// 1. GCS クライアントの初期化とクリーンアップ設定 (Factoryに委譲)
 	// ----------------------------------------------------------------
 
-	// GCS クライアントの初期化
-	gcsClient, err := storage.NewClient(ctx)
+	// Factoryを初期化し、GCSクライアントの初期化と管理を委譲する
+	clientFactory, err := factory.NewClientFactory(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GCSクライアントの初期化に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("Factoryの初期化に失敗しました: %w", err)
 	}
 
-	// クリーンアップ関数を定義
-	gcsClientCloser := func() {
-		gcsClient.Close()
+	// FactoryのCloseは func() error 型なので、戻り値の func() に合わせるためのラッパーを定義
+	closer := func() {
+		if closeErr := clientFactory.Close(); closeErr != nil {
+			// エラーをログに出力するなど、適切な処理を行う
+			fmt.Printf("警告: Factoryのクローズ中にエラーが発生しました: %v\n", closeErr)
+		}
 	}
 
 	// ----------------------------------------------------------------
@@ -38,8 +40,8 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// BuildReliableScraperExecutor を呼び出し、リトライ実行者を取得
 	scraperExecutor, err := builder.BuildReliableScraperExecutor(opts.ScraperTimeout, opts.MaxScraperParallel)
 	if err != nil {
-		// 失敗時はGCSクライアントを閉じる
-		return nil, gcsClientCloser, fmt.Errorf("ReliableScraperExecutorの初期化に失敗しました: %w", err)
+		// 失敗時はFactoryを閉じる
+		return nil, closer, fmt.Errorf("ReliableScraperExecutorの初期化に失敗しました: %w", err)
 	}
 
 	// ----------------------------------------------------------------
@@ -49,11 +51,11 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// プロンプトビルダーの初期化
 	mapBuilder := prompts.NewMapPromptBuilder()
 	if err := mapBuilder.Err(); err != nil {
-		return nil, gcsClientCloser, fmt.Errorf("Map Prompt Builderの初期化に失敗しました: %w", err)
+		return nil, closer, fmt.Errorf("Map Prompt Builderの初期化に失敗しました: %w", err)
 	}
 	reduceBuilder := prompts.NewReducePromptBuilder()
 	if err := reduceBuilder.Err(); err != nil {
-		return nil, gcsClientCloser, fmt.Errorf("Reduce Prompt Builderの初期化に失敗しました: %w", err)
+		return nil, closer, fmt.Errorf("Reduce Prompt Builderの初期化に失敗しました: %w", err)
 	}
 
 	// PromptBuilders を構造体にまとめる
@@ -65,13 +67,13 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// LLMExecutor の構築
 	executor, err := cleaner.NewLLMConcurrentExecutor(ctx, opts.LLMAPIKey, cleaner.DefaultMaxMapConcurrency)
 	if err != nil {
-		return nil, gcsClientCloser, fmt.Errorf("LLM Executorの初期化に失敗しました: %w", err)
+		return nil, closer, fmt.Errorf("LLM Executorの初期化に失敗しました: %w", err)
 	}
 
 	// Cleaner の構築
 	contentCleaner, err := cleaner.NewCleaner(builders, executor)
 	if err != nil {
-		return nil, gcsClientCloser, fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
+		return nil, closer, fmt.Errorf("Cleanerの初期化に失敗しました: %w", err)
 	}
 
 	// ----------------------------------------------------------------
@@ -79,22 +81,33 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1 URLGenerator の構築
-	// NewLocalGCSInputReader を使用して InputReader の具象実装を作成し、
-	// それを NewDefaultURLGeneratorImpl に注入するように修正。
-	urlReader := pipeline.NewLocalGCSInputReader(gcsClient)
+	// ★修正2: clientFactoryを使用
+	urlReader, err := clientFactory.NewInputReader()
+	if err != nil {
+		return nil, closer, fmt.Errorf("InputReaderの生成に失敗しました: %w", err)
+	}
+	// urlReader (remoteio.InputReader) を NewDefaultURLGeneratorImpl に注入
 	urlGen := pipeline.NewDefaultURLGeneratorImpl(urlReader)
 
 	// 4.2 ContentFetcher の構築
 	fetcher := pipeline.NewWebContentFetcherImpl(scraperExecutor)
 
-	// 4.3 OutputGenerator の構築 (ContentCleanerとGCSOutputWriterを注入)
+	// 4.3 OutputGenerator の構築 (ContentCleanerとWriterを注入)
+	rawOutputWriter, err := clientFactory.NewOutputWriter()
+	if err != nil {
+		return nil, closer, fmt.Errorf("OutputWriterの生成に失敗しました: %w", err)
+	}
 
-	// GCSへの出力を担う具象実装を構築 (pipeline.NewGCSFileWriterが存在すると仮定)
-	gcsWriter := pipeline.NewGCSFileWriter(gcsClient)
+	// 具象型 (UniversalIOWriter) は pipeline.Writer (GCSとLocalの両機能を結合したもの) を満たす。
+	outputWriter, ok := rawOutputWriter.(pipeline.Writer)
+	if !ok {
+		// Factoryが予期せぬ型を返した場合のガード
+		return nil, closer, fmt.Errorf("生成されたWriterが pipeline.Writer インターフェース (GCS/Localの両機能) を満たしていません")
+	}
 
-	// ContentCleanerとGCSWriterを注入
-	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner, gcsWriter)
+	// ContentCleanerとOutputWriterを注入 (修正されたoutputWriterを使用)
+	outputGen := pipeline.NewLLMOutputGeneratorImpl(contentCleaner, outputWriter)
 
 	// 全てのステージとオプションをPipelineに注入し、クリーンアップ関数も一緒に返す
-	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), gcsClientCloser, nil
+	return pipeline.NewPipeline(opts, urlGen, fetcher, outputGen), closer, nil
 }
