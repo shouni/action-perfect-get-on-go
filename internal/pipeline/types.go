@@ -59,6 +59,11 @@ type InputReader interface {
 	Open(ctx context.Context, path string) (io.ReadCloser, error)
 }
 
+type Writer interface {
+	WriteToGCS(ctx context.Context, bucket, path string, content io.Reader, contentType string) error
+	WriteToLocal(ctx context.Context, path string, content io.Reader) error
+}
+
 // ----------------------------------------------------------------
 // Pipeline コア構造
 // ----------------------------------------------------------------
