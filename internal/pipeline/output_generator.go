@@ -28,7 +28,7 @@ type ContentCleaner interface {
 	CleanAndStructureText(ctx context.Context, results []extTypes.URLResult) (string, error)
 }
 
-// MdToHtmlRunner は、Go-Text-Format の Runner インターフェースと一致するよう定義します。
+// MdToHtmlRunner は、github.com/shouni/go-text-format/pkg/runner.MarkdownToHtmlRunner インターフェースと一致するよう定義します。
 type MdToHtmlRunner interface {
 	ConvertMarkdownToHtml(ctx context.Context, title string, markdown []byte) (*bytes.Buffer, error)
 }
@@ -83,7 +83,7 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 		if err != nil {
 			return fmt.Errorf("MarkdownからHTMLへの変換に失敗しました: %w", err)
 		}
-		contentReader := bytes.NewReader(htmlBuffer.Bytes())
+		contentReader = bytes.NewReader(htmlBuffer.Bytes())
 
 		// GCSへの出力パス
 		bucket, path, err := remoteio.ParseGCSURI(outputFilePath)
