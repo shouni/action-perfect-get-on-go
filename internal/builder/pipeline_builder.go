@@ -8,9 +8,9 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
-	remoteioFactory "github.com/shouni/go-remote-io/pkg/factory"
-	textformatbuilder "github.com/shouni/go-text-format/pkg/builder"
-	"github.com/shouni/web-text-pipe-go/pkg/builder"
+	remoteio "github.com/shouni/go-remote-io/pkg/factory"
+	textformat "github.com/shouni/go-text-format/pkg/builder"
+	textpipe "github.com/shouni/web-text-pipe-go/pkg/builder"
 )
 
 // BuildPipeline は、必要なすべての依存関係を構築し、DIされた Pipeline インスタンスと
@@ -22,7 +22,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// Factoryを初期化し、GCSクライアントの初期化と管理を委譲する
-	remoteioFactory, err := remoteioFactory.NewClientFactory(ctx)
+	remoteioFactory, err := remoteio.NewClientFactory(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Factoryの初期化に失敗しました: %w", err)
 	}
@@ -39,7 +39,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// BuildReliableScraperExecutor を呼び出し、リトライ実行者を取得
-	scraperExecutor, err := builder.BuildReliableScraperExecutor(opts.ScraperTimeout, opts.MaxScraperParallel)
+	scraperExecutor, err := textpipe.BuildReliableScraperExecutor(opts.ScraperTimeout, opts.MaxScraperParallel)
 	if err != nil {
 		// 失敗時はFactoryを閉じる
 		return nil, closer, fmt.Errorf("ReliableScraperExecutorの初期化に失敗しました: %w", err)
@@ -82,7 +82,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1. Text Format Builderの構築 (Converter/Rendererを内部で初期化)
-	textFormatBuilder, err := textformatbuilder.NewBuilder()
+	textFormatBuilder, err := textformat.NewBuilder()
 	if err != nil {
 		return nil, closer, fmt.Errorf("Text Format Builderの初期化に失敗しました: %w", err)
 	}
