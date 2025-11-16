@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultContextTimeout = 30 * time.Minute
+
 // runCmd は、メインのCLIコマンド定義です。
 var runCmd = &cobra.Command{
 	Use:   "run",
@@ -77,7 +79,7 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 	}
 
 	// LLMTimeout を含む、パイプライン全体の実行コンテキストを作成
-	ctx, cancel := context.WithTimeout(cmd.Context(), opts.LLMTimeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), defaultContextTimeout)
 	defer cancel()
 
 	// 1. パイプラインの構築
