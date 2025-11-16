@@ -16,7 +16,6 @@ import (
 
 const (
 	previewLines = 10
-	gcsPrefix    = "gs://" // GCS URIのプレフィックス
 )
 
 // ----------------------------------------------------------------
@@ -72,14 +71,13 @@ func (l *LLMOutputGeneratorImpl) Generate(ctx context.Context, opts CmdOptions, 
 	// ----------------------------------------------------------------
 
 	outputFilePath := opts.OutputFilePath
-	hasGCSOutput := strings.HasPrefix(outputFilePath, gcsPrefix)
-
 	// コンテンツを io.Reader に変換
-	contentReader := bytes.NewReader([]byte(cleanedText))
+	contentBytes := []byte(cleanedText)
+	contentReader := bytes.NewReader(contentBytes)
 
-	if hasGCSOutput {
+	if remoteio.IsGCSURI(outputFilePath) {
 		slog.Info("LLMによって生成されたMarkdownをHTMLドキュメントに変換します。")
-		htmlBuffer, err := l.htmlRunner.ConvertMarkdownToHtml(ctx, "", []byte(cleanedText))
+		htmlBuffer, err := l.htmlRunner.ConvertMarkdownToHtml(ctx, "", contentBytes)
 		if err != nil {
 			return fmt.Errorf("MarkdownからHTMLへの変換に失敗しました: %w", err)
 		}
