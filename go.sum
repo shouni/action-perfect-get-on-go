@@ -107,10 +107,10 @@ github.com/shouni/go-cli-base v1.0.5 h1:Wn09yji6/DIesFwo81/xlzWaJMqZVG07gXoRxMIr
 github.com/shouni/go-cli-base v1.0.5/go.mod h1:8E4ahg7/LC3cG5zSBR4u/s+ugqrXxEsqXVWGbFlE1P8=
 github.com/shouni/go-http-kit v1.1.2 h1:hVhVSjF1yLt9kMJbI5yFYQvANuHCH3so7ynhCiXbI8Q=
 github.com/shouni/go-http-kit v1.1.2/go.mod h1:CFk1CJbTqRskKB70qbn+q2fVyH9zXNp9KWQuWp/lwFY=
-github.com/shouni/go-remote-io v1.0.6 h1:28g8WzdVGqrvWO4zMOhQkK2xR+BxVtwF50vI+MMI+Q0=
-github.com/shouni/go-remote-io v1.0.6/go.mod h1:YGdhD9dK8TMwcrp5mL+lgfqoWEAbsNQeckWik3yopG8=
-github.com/shouni/go-text-format v1.0.4 h1:0t+Jc76ZDu/NgLq9iYP6JU0TgJ68r0GtI4l6qrkRZEo=
-github.com/shouni/go-text-format v1.0.4/go.mod h1:jgavvaEGvDoHRh9NRTmFepROeAKTlDbqUNEquZfiMQE=
+github.com/shouni/go-remote-io v1.0.7 h1:eitGdwrPe5N0cs5VgRBu0zNl7Z96P4CdHqShPSiGi7o=
+github.com/shouni/go-remote-io v1.0.7/go.mod h1:YGdhD9dK8TMwcrp5mL+lgfqoWEAbsNQeckWik3yopG8=
+github.com/shouni/go-text-format v1.0.5 h1:+bfxbeDi9N1trC9BdfG1gvV4oG5fw15qHPpgmDKxfEE=
+github.com/shouni/go-text-format v1.0.5/go.mod h1:jgavvaEGvDoHRh9NRTmFepROeAKTlDbqUNEquZfiMQE=
 github.com/shouni/go-utils v1.0.11 h1:X818DZWQZqEH5BPqWPhJP89k9r234aTJzzkmoU2y0cs=
 github.com/shouni/go-utils v1.0.11/go.mod h1:dQxOuVTvWFHWEH/G6izteLh+tubkI5Sl1jpDWlCSkBU=
 github.com/shouni/go-web-exact/v2 v2.0.13 h1:GMwj/0tP96B8VGBQ0yhe8+dYI4lD6ImIC4Kdra1xptM=
