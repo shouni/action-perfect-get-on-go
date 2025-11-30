@@ -23,10 +23,12 @@ type LLMExecutor interface {
 type LLMConcurrentExecutor struct {
 	client      *gemini.Client
 	concurrency int
+	mapModel    string
+	reduceModel string
 }
 
 // NewLLMConcurrentExecutor は新しい LLMConcurrentExecutor インスタンスを作成します。
-func NewLLMConcurrentExecutor(ctx context.Context, apiKeyOverride string, concurrency int) (*LLMConcurrentExecutor, error) {
+func NewLLMConcurrentExecutor(ctx context.Context, apiKeyOverride string, concurrency int, mapModel, reduceModel string) (*LLMConcurrentExecutor, error) {
 	var client *gemini.Client
 	var err error
 
@@ -47,6 +49,8 @@ func NewLLMConcurrentExecutor(ctx context.Context, apiKeyOverride string, concur
 	return &LLMConcurrentExecutor{
 		client:      client,
 		concurrency: concurrency,
+		mapModel:    mapModel,
+		reduceModel: reduceModel,
 	}, nil
 }
 
@@ -73,7 +77,8 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 	slog.Info("セグメントの並列処理を開始します",
 		slog.Int("total_segments", len(allSegments)),
 		slog.Int("max_parallel", e.concurrency),
-		slog.Duration("rate_limit", DefaultLLMRateLimit))
+		slog.Duration("rate_limit", DefaultLLMRateLimit),
+		slog.String("model", e.mapModel))
 
 	for i, seg := range allSegments {
 		sem <- struct{}{} // セマフォ取得
@@ -89,7 +94,6 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 				// 続行
 			case <-ctx.Done():
 				// コンテキストキャンセルはエラーとして扱わず、処理を中断する
-				// 必要に応じて、slog.Debugなどで詳細をログ出力する
 				resultsChan <- MapResult{Err: ctx.Err()} // ctx.Err() を直接返すことで、キャンセル理由が明確になる
 				return
 			}
@@ -105,7 +109,7 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 				return
 			}
 
-			response, err := e.client.GenerateContent(ctx, prompt, "gemini-2.5-flash")
+			response, err := e.client.GenerateContent(ctx, prompt, e.mapModel)
 			if err != nil {
 				// エラー処理は resultsChan に集約
 				resultsChan <- MapResult{Err: fmt.Errorf("セグメント %d 処理失敗 (URL: %s): %w", index+1, s.URL, err)}
@@ -116,6 +120,7 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 				"index", index+1,
 				"url", s.URL,
 				"summary_len", len(response.Text),
+				"model", e.mapModel,
 			)
 
 			resultsChan <- MapResult{Summary: response.Text, Err: nil}
@@ -138,8 +143,7 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 
 // ExecuteReduce は ReduceフェーズのAPI呼び出しを実行します。
 func (e *LLMConcurrentExecutor) ExecuteReduce(ctx context.Context, combinedText string, reduceBuilder *prompts.PromptBuilder) (string, error) {
-	// 修正: log.Println -> slog.Info
-	slog.Info("最終的な構造化（Reduceフェーズ）を開始します。")
+	slog.Info("最終的な構造化（Reduceフェーズ）を開始します。", slog.String("model", e.reduceModel))
 
 	reduceData := prompts.ReduceTemplateData{
 		CombinedText: combinedText,
@@ -150,10 +154,15 @@ func (e *LLMConcurrentExecutor) ExecuteReduce(ctx context.Context, combinedText 
 		return "", fmt.Errorf("最終 Reduce プロンプトの生成に失敗しました: %w", err)
 	}
 
-	finalResponse, err := e.client.GenerateContent(ctx, finalPrompt, "gemini-2.5-flash")
+	finalResponse, err := e.client.GenerateContent(ctx, finalPrompt, e.reduceModel)
 	if err != nil {
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
 	}
+
+	slog.Info(
+		"Reduce処理成功",
+		"model", e.reduceModel,
+	)
 
 	return finalResponse.Text, nil
 }
