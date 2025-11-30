@@ -7,7 +7,7 @@ import (
 
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
-	"github.com/shouni/action-perfect-get-on-go/prompts"
+	"github.com/shouni/action-perfect-get-on-go/internal/prompts"
 	"github.com/shouni/go-remote-io/pkg/gcsfactory"
 	textformat "github.com/shouni/go-text-format/pkg/builder"
 	textpipe "github.com/shouni/web-text-pipe-go/pkg/builder"
