@@ -8,7 +8,7 @@ import (
 	"github.com/shouni/action-perfect-get-on-go/internal/cleaner"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/shouni/action-perfect-get-on-go/prompts"
-	remoteio "github.com/shouni/go-remote-io/pkg/factory"
+	"github.com/shouni/go-remote-io/pkg/gcsfactory"
 	textformat "github.com/shouni/go-text-format/pkg/builder"
 	textpipe "github.com/shouni/web-text-pipe-go/pkg/builder"
 )
@@ -22,14 +22,14 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// Factoryを初期化し、GCSクライアントの初期化と管理を委譲する
-	remoteioFactory, err := remoteio.NewClientFactory(ctx)
+	GCSClient, err := gcsfactory.NewGCSClientFactory(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Factoryの初期化に失敗しました: %w", err)
 	}
 
 	// FactoryのCloseは func() error 型なので、戻り値の func() に合わせるためのラッパーを定義
 	closer := func() {
-		if closeErr := remoteioFactory.Close(); closeErr != nil {
+		if closeErr := GCSClient.Close(); closeErr != nil {
 			slog.Error("Factoryのクローズ中にエラーが発生しました", slog.Any("error", closeErr))
 		}
 	}
@@ -98,7 +98,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1 URLGenerator の構築
-	urlReader, err := remoteioFactory.NewInputReader()
+	urlReader, err := GCSClient.NewInputReader()
 	if err != nil {
 		return nil, closer, fmt.Errorf("InputReaderの生成に失敗しました: %w", err)
 	}
@@ -109,7 +109,7 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	fetcher := pipeline.NewWebContentFetcherImpl(scraperExecutor)
 
 	// 4.3 OutputGenerator の構築 (ContentCleanerとWriterを注入)
-	rawOutputWriter, err := remoteioFactory.NewOutputWriter()
+	rawOutputWriter, err := GCSClient.NewOutputWriter()
 	if err != nil {
 		return nil, closer, fmt.Errorf("OutputWriterの生成に失敗しました: %w", err)
 	}
