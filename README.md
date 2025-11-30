@@ -146,6 +146,8 @@ gcloud auth application-default login
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
 | `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
 | `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。 | **10** |
+| `--map-model` | なし | Mapフェーズ（中間要約）に使用するAIモデル名（例: `gemini-2.5-flash`）。 | `gemini-2.5-flash` |
+| `--reduce-model` | なし | Reduceフェーズ（最終構造化）に使用するAIモデル名（例: `gemini-2.5-pro`）。 | `gemini-2.5-flash` |
 
 ### 1\. URLファイル (`urls.txt` の例) の作成
 
@@ -167,9 +169,13 @@ https://example.com/page-c/specification
 # 標準出力へはMarkdown形式のプレビューが出力されます。
 ./bin/llm_cleaner run -f ./urls.txt
 
-# 推奨実行形式 (APIキー、カスタムタイムアウト、ローカルファイルに出力)
+# 推奨実行形式 (APIキー、カスタムタイムアウト、ローカルファイルに出力、モデル指定)
 # 出力ファイルは完全なHTMLドキュメント (output.html) となります。
-./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt -s 30s -t 3m -p 5 -o ./output/summary.html
+./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt \
+  -s 30s -t 3m -p 5 \
+  --map-model "gemini-2.5-flash" \
+  --reduce-model "gemini-2.5-pro" \
+  -o ./output/summary.html
 
 # クラウド運用向け実行形式 (GCSバケットから読み込み、GCSバケットへ書き出し)
 # JobサービスアカウントにGCS読み書き権限が必要です。

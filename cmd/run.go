@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	// GCSクライアント初期化のエラーハンドリングのために storage をインポートする必要は
-	// builder側で行っているため、ここでは不要です。
-
 	"github.com/shouni/action-perfect-get-on-go/internal/builder"
 	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
 	"github.com/spf13/cobra"
 )
 
 const defaultContextTimeout = 30 * time.Minute
+
+const defaultModelName = "gemini-2.5-flash"
 
 // runCmd は、メインのCLIコマンド定義です。
 var runCmd = &cobra.Command{
@@ -38,6 +37,9 @@ func init() {
 	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
 	runCmd.Flags().StringP("output", "o", "./output/output_reduce_final.md", "最終的な構造化Markdownを出力するファイルパス (省略時は標準出力)")
 	runCmd.Flags().IntP("parallel", "p", 5, "Webスクレイピングの最大同時並列リクエスト数")
+	runCmd.Flags().String("map-model", defaultModelName, "Mapフェーズ に使用するAIモデル名")
+	runCmd.Flags().String("reduce-model", defaultModelName, "Reduceフェーズ に使用するAIモデル名")
+
 	runCmd.MarkFlagRequired("url-file")
 }
 
@@ -69,6 +71,15 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
 	}
 
+	mapModel, err := cmd.Flags().GetString("map-model")
+	if err != nil {
+		return fmt.Errorf("map-modelフラグの取得に失敗しました: %w", err)
+	}
+	reduceModel, err := cmd.Flags().GetString("reduce-model")
+	if err != nil {
+		return fmt.Errorf("reduce-modelフラグの取得に失敗しました: %w", err)
+	}
+
 	opts := pipeline.CmdOptions{
 		LLMAPIKey:          llmAPIKey,
 		LLMTimeout:         llmTimeout,
@@ -76,6 +87,8 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		URLFile:            urlFile,
 		OutputFilePath:     outputFilePath,
 		MaxScraperParallel: maxScraperParallel,
+		MapModel:           mapModel,
+		ReduceModel:        reduceModel,
 	}
 
 	// LLMTimeout を含む、パイプライン全体の実行コンテキストを作成
