@@ -147,7 +147,7 @@ gcloud auth application-default login
 | `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
 | `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。リソース消費や対象サーバーへの負荷を考慮し、デフォルト値を調整しました。 | **5** |
 | `--map-model` | なし | Mapフェーズ（中間要約）に使用するAIモデル名（例: `gemini-2.5-flash`）。 | `gemini-2.5-flash` |
-| `--reduce-model` | なし | Reduceフェーズ（最終構造化）に使用するAIモデル名（例: `gemini-2.5-pro`）。 | `gemini-2.5-flash` |
+| `--reduce-model` | なし | Reduceフェーズ（最終構造化）に使用するAIモデル名（例: `gemini-2.5-flash`）。 | `gemini-2.5-flash` |
 
 ### 1\. URLファイル (`urls.txt` の例) の作成
 
