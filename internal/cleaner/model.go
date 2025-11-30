@@ -3,7 +3,7 @@ package cleaner
 import (
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/internal/prompts"
+	"action-perfect-get-on-go/internal/prompts"
 )
 
 // DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
