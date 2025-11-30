@@ -85,6 +85,12 @@ func newCmdOptionsFromFlags(cmd *cobra.Command) (pipeline.CmdOptions, error) {
 		return pipeline.CmdOptions{}, fmt.Errorf("reduce-modelフラグの取得に失敗しました: %w", err)
 	}
 
+	if mapModel == "" {
+		return pipeline.CmdOptions{}, fmt.Errorf("--map-model には空でないAIモデル名を指定する必要があります")
+	}
+	if reduceModel == "" {
+		return pipeline.CmdOptions{}, fmt.Errorf("--reduce-model には空でないAIモデル名を指定する必要があります")
+	}
 	// 構造体の初期化
 	opts := pipeline.CmdOptions{
 		LLMAPIKey:          llmAPIKey,

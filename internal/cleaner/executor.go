@@ -18,6 +18,14 @@ type LLMExecutor interface {
 	ExecuteReduce(ctx context.Context, combinedText string, builder *prompts.PromptBuilder) (string, error)
 }
 
+// LLMExecutorConfig は NewLLMConcurrentExecutor の設定をカプセル化します。
+type LLMExecutorConfig struct {
+	APIKeyOverride string
+	Concurrency    int
+	MapModel       string
+	ReduceModel    string
+}
+
 // LLMConcurrentExecutor は LLMExecutor の具体的な実装で、
 // Goroutine、セマフォ、レートリミッターを使用して並列実行を行います。
 type LLMConcurrentExecutor struct {
@@ -28,12 +36,12 @@ type LLMConcurrentExecutor struct {
 }
 
 // NewLLMConcurrentExecutor は新しい LLMConcurrentExecutor インスタンスを作成します。
-func NewLLMConcurrentExecutor(ctx context.Context, apiKeyOverride string, concurrency int, mapModel, reduceModel string) (*LLMConcurrentExecutor, error) {
+func NewLLMConcurrentExecutor(ctx context.Context, cfg LLMExecutorConfig) (*LLMConcurrentExecutor, error) {
 	var client *gemini.Client
 	var err error
 
-	if apiKeyOverride != "" {
-		client, err = gemini.NewClient(ctx, gemini.Config{APIKey: apiKeyOverride})
+	if cfg.APIKeyOverride != "" {
+		client, err = gemini.NewClient(ctx, gemini.Config{APIKey: cfg.APIKeyOverride})
 	} else {
 		client, err = gemini.NewClientFromEnv(ctx)
 	}
@@ -42,15 +50,15 @@ func NewLLMConcurrentExecutor(ctx context.Context, apiKeyOverride string, concur
 		return nil, fmt.Errorf("LLMクライアントの初期化に失敗しました。APIキーを確認してください: %w", err)
 	}
 
-	if concurrency < 1 {
-		concurrency = 1
+	if cfg.Concurrency < 1 {
+		cfg.Concurrency = 1
 	}
 
 	return &LLMConcurrentExecutor{
 		client:      client,
-		concurrency: concurrency,
-		mapModel:    mapModel,
-		reduceModel: reduceModel,
+		concurrency: cfg.Concurrency,
+		mapModel:    cfg.MapModel,
+		reduceModel: cfg.ReduceModel,
 	}, nil
 }
 
