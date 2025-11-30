@@ -142,10 +142,10 @@ gcloud auth application-default login
 | :--- | :--- | :--- | :--- |
 | `--api-key` | `-k` | **Gemini APIキー**を直接指定します（推奨）。 | なし |
 | `--url-file` | `-f` | **処理対象のURLリストを記載したファイルパス**を指定します。ローカルパスまたは**GCS URI (`gs://...`)** を指定できます。 **(必須)** | なし |
-| `--output` | `-o` | **最終的な構造化結果の出力先パス**を指定します。ローカルパスまたは**GCS URI (`gs://...`)** を指定できます。GCS URIを指定した場合、ローカルへの出力はスキップされます。 | 標準出力 |
+| `--output` | `-o` | **最終的な構造化結果の出力先パス**を指定します。ローカルパスまたは**GCS URI (`gs://...`)** を指定できます。GCS URIを指定した場合、ローカルへの出力はスキップされます。 | `./output/output_reduce_final.md` |
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
 | `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
-| `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。 | 5 |
+| `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。リソース消費や対象サーバーへの負荷を考慮し、デフォルト値を調整しました。 | **5** |
 | `--map-model` | なし | Mapフェーズ（中間要約）に使用するAIモデル名（例: `gemini-2.5-flash`）。 | `gemini-2.5-flash` |
 | `--reduce-model` | なし | Reduceフェーズ（最終構造化）に使用するAIモデル名（例: `gemini-2.5-pro`）。 | `gemini-2.5-flash` |
 
@@ -170,7 +170,7 @@ https://example.com/page-c/specification
 ./bin/llm_cleaner run -f ./urls.txt
 
 # 推奨実行形式 (APIキー、カスタムタイムアウト、ローカルファイルに出力、モデル指定)
-# 出力ファイルは完全なHTMLドキュメント (output.html) となります。
+# デフォルトではMarkdown形式で出力されますが、例のように拡張子を.htmlにすることでHTMLドキュメントとして出力することも可能です。
 ./bin/llm_cleaner run -k "YOUR_API_KEY" -f ./urls.txt \
   -s 30s -t 3m -p 5 \
   --map-model "gemini-2.5-flash" \
