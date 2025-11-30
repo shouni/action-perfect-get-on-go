@@ -48,43 +48,44 @@ func init() {
 	runCmd.MarkFlagRequired("url-file")
 }
 
-// runMainLogicはCLIのメインロジックを実行し、フラグをAppに渡します。
-func runMainLogic(cmd *cobra.Command, args []string) error {
-	// フラグから値を取得し、エラーチェック
+// newCmdOptionsFromFlags は cobra.Command のフラグから CmdOptions 構造体を生成します。
+// これにより、runMainLogic のフラグ取得ロジックが簡潔になります。
+func newCmdOptionsFromFlags(cmd *cobra.Command) (pipeline.CmdOptions, error) {
 	llmTimeout, err := cmd.Flags().GetDuration("llm-timeout")
 	if err != nil {
-		return fmt.Errorf("llm-timeoutフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("llm-timeoutフラグの取得に失敗しました: %w", err)
 	}
 	scraperTimeout, err := cmd.Flags().GetDuration("scraper-timeout")
 	if err != nil {
-		return fmt.Errorf("scraper-timeoutフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("scraper-timeoutフラグの取得に失敗しました: %w", err)
 	}
 	llmAPIKey, err := cmd.Flags().GetString("api-key")
 	if err != nil {
-		return fmt.Errorf("api-keyフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("api-keyフラグの取得に失敗しました: %w", err)
 	}
 	urlFile, err := cmd.Flags().GetString("url-file")
 	if err != nil {
-		return fmt.Errorf("url-fileフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("url-fileフラグの取得に失敗しました: %w", err)
 	}
 	outputFilePath, err := cmd.Flags().GetString("output")
 	if err != nil {
-		return fmt.Errorf("outputフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("outputフラグの取得に失敗しました: %w", err)
 	}
 	maxScraperParallel, err := cmd.Flags().GetInt("parallel")
 	if err != nil {
-		return fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
 	}
 
 	mapModel, err := cmd.Flags().GetString("map-model")
 	if err != nil {
-		return fmt.Errorf("map-modelフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("map-modelフラグの取得に失敗しました: %w", err)
 	}
 	reduceModel, err := cmd.Flags().GetString("reduce-model")
 	if err != nil {
-		return fmt.Errorf("reduce-modelフラグの取得に失敗しました: %w", err)
+		return pipeline.CmdOptions{}, fmt.Errorf("reduce-modelフラグの取得に失敗しました: %w", err)
 	}
 
+	// 構造体の初期化
 	opts := pipeline.CmdOptions{
 		LLMAPIKey:          llmAPIKey,
 		LLMTimeout:         llmTimeout,
@@ -96,11 +97,23 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 		ReduceModel:        reduceModel,
 	}
 
+	return opts, nil
+}
+
+// runMainLogicはCLIのメインロジックを実行し、フラグをAppに渡します。
+// フラグ取得処理は newCmdOptionsFromFlags に抽出されています。
+func runMainLogic(cmd *cobra.Command, args []string) error {
+	// 1. フラグからオプション構造体を生成する処理をヘルパー関数に委譲
+	opts, err := newCmdOptionsFromFlags(cmd)
+	if err != nil {
+		return err // フラグ取得エラーを直接返す
+	}
+
 	// LLMTimeout を含む、パイプライン全体の実行コンテキストを作成
 	ctx, cancel := context.WithTimeout(cmd.Context(), defaultContextTimeout)
 	defer cancel()
 
-	// 1. パイプラインの構築
+	// 2. パイプラインの構築
 	p, closer, err := builder.BuildPipeline(ctx, opts)
 	if err != nil {
 		// パイプライン構築が失敗した場合（例: Extractor初期化失敗など）
@@ -108,11 +121,9 @@ func runMainLogic(cmd *cobra.Command, args []string) error {
 	}
 
 	// GCSクライアントを含むすべてのリソースを確実にクローズする
-	// closer は nil でないことが保証されている（builder側で初期化成功しているため）
 	defer closer()
 
-	// 2. パイプラインの実行
-	// Execute は、内部のすべての処理（URL生成、コンテンツ取得、クリーンアップ、ファイル出力）からのエラーをラップして返します。
+	// 3. パイプラインの実行
 	if err := p.Execute(ctx); err != nil {
 		return fmt.Errorf("パイプラインの実行中にエラーが発生しました: %w", err)
 	}

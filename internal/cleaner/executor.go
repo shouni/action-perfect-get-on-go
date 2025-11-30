@@ -73,7 +73,6 @@ func (e *LLMConcurrentExecutor) ExecuteMap(ctx context.Context, allSegments []Se
 	defer ticker.Stop()
 	rateLimiter := ticker.C
 
-	// 修正: log.Printf -> slog.Info (構造化)
 	slog.Info("セグメントの並列処理を開始します",
 		slog.Int("total_segments", len(allSegments)),
 		slog.Int("max_parallel", e.concurrency),
