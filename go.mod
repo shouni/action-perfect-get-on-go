@@ -3,11 +3,11 @@ module github.com/shouni/action-perfect-get-on-go
 go 1.25
 
 require (
-	github.com/shouni/go-ai-client/v2 v2.0.5
+	github.com/shouni/go-ai-client/v2 v2.0.7
 	github.com/shouni/go-cli-base v1.0.5
-	github.com/shouni/go-remote-io v1.0.7
+	github.com/shouni/go-remote-io v1.1.0
 	github.com/shouni/go-text-format v1.0.5
-	github.com/shouni/go-utils v1.0.11
+	github.com/shouni/go-utils v1.0.14
 	github.com/shouni/go-web-exact/v2 v2.0.13
 	github.com/shouni/web-text-pipe-go v1.0.10
 	github.com/spf13/cobra v1.10.1
@@ -27,6 +27,17 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0 // indirect
 	github.com/PuerkitoBio/goquery v1.10.3 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.40.0 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.14 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.14 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.92.1 // indirect
+	github.com/aws/smithy-go v1.23.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
