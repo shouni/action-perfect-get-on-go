@@ -60,8 +60,5 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.
 		return "", fmt.Errorf("LLM最終構造化処理（Reduceフェーズ）に失敗しました: %w", err)
 	}
 
-	// 5. 最終出力のクリーンアップ（マーカー削除）
-	cleanedText := cleanFinalOutput(finalResponseText)
-
-	return cleanedText, nil
+	return strings.TrimSpace(finalResponseText), nil
 }
