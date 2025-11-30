@@ -10,9 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// パイプライン全体の最大実行時間。個別のLLM/スクレイピングタイムアウトとは別に、全体の上限を設ける。
 const defaultContextTimeout = 30 * time.Minute
 
-const defaultModelName = "gemini-2.5-flash"
+// Mapフェーズ (中間要約) のデフォルトモデル: 速度とコストを優先
+const defaultMapModelName = "gemini-2.5-flash"
+
+// Reduceフェーズ (最終構造化) のデフォルトモデル: 品質と論理性を優先
+const defaultReduceModelName = "gemini-2.5-pro"
 
 // runCmd は、メインのCLIコマンド定義です。
 var runCmd = &cobra.Command{
@@ -37,8 +42,8 @@ func init() {
 	runCmd.Flags().StringP("url-file", "f", "", "処理対象のURLリストを記載したファイルパス")
 	runCmd.Flags().StringP("output", "o", "./output/output_reduce_final.md", "最終的な構造化Markdownを出力するファイルパス (省略時は標準出力)")
 	runCmd.Flags().IntP("parallel", "p", 5, "Webスクレイピングの最大同時並列リクエスト数")
-	runCmd.Flags().String("map-model", defaultModelName, "Mapフェーズ に使用するAIモデル名")
-	runCmd.Flags().String("reduce-model", defaultModelName, "Reduceフェーズ に使用するAIモデル名")
+	runCmd.Flags().String("map-model", defaultMapModelName, "Mapフェーズ に使用するAIモデル名")
+	runCmd.Flags().String("reduce-model", defaultReduceModelName, "Reduceフェーズ に使用するAIモデル名")
 
 	runCmd.MarkFlagRequired("url-file")
 }
