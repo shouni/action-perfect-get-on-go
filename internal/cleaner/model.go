@@ -15,8 +15,8 @@ const MaxSegmentChars = 400000
 // DefaultMaxMapConcurrency は、Mapフェーズでデフォルトで許可する同時実行数です。
 const DefaultMaxMapConcurrency = 2
 
-// DefaultLLMRateLimit は、2000msごとに1リクエストを許可するレートリミットです。
-const DefaultLLMRateLimit = 2000 * time.Millisecond
+// DefaultLLMRateLimit は、10sごとに1リクエストを許可するレートリミットです。
+const DefaultLLMRateLimit = 10 * time.Second
 
 // Segment は、LLMに渡すテキストと、それが由来する元のURLを保持します。
 type Segment struct {
