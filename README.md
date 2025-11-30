@@ -145,7 +145,7 @@ gcloud auth application-default login
 | `--output` | `-o` | **最終的な構造化結果の出力先パス**を指定します。ローカルパスまたは**GCS URI (`gs://...`)** を指定できます。GCS URIを指定した場合、ローカルへの出力はスキップされます。 | 標準出力 |
 | `--llm-timeout` | `-t` | LLM処理全体のタイムアウト時間。 | 5m0s (5分) |
 | `--scraper-timeout` | `-s` | Webスクレイピング（HTTPアクセス）のタイムアウト時間。 | 15s (15秒) |
-| `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。 | **10** |
+| `--parallel` | `-p` | **Webスクレイピングの最大同時並列リクエスト数**。 | 5 |
 | `--map-model` | なし | Mapフェーズ（中間要約）に使用するAIモデル名（例: `gemini-2.5-flash`）。 | `gemini-2.5-flash` |
 | `--reduce-model` | なし | Reduceフェーズ（最終構造化）に使用するAIモデル名（例: `gemini-2.5-pro`）。 | `gemini-2.5-flash` |
 
