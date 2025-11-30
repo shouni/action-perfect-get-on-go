@@ -76,6 +76,10 @@ func newCmdOptionsFromFlags(cmd *cobra.Command) (pipeline.CmdOptions, error) {
 		return pipeline.CmdOptions{}, fmt.Errorf("parallelフラグの取得に失敗しました: %w", err)
 	}
 
+	if maxScraperParallel < 1 {
+		return pipeline.CmdOptions{}, fmt.Errorf("--parallel には1以上の値を指定する必要があります")
+	}
+
 	mapModel, err := cmd.Flags().GetString("map-model")
 	if err != nil {
 		return pipeline.CmdOptions{}, fmt.Errorf("map-modelフラグの取得に失敗しました: %w", err)
