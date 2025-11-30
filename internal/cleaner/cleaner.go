@@ -53,7 +53,6 @@ func (c *Cleaner) CleanAndStructureText(ctx context.Context, results []extTypes.
 	finalCombinedText := strings.Join(intermediateSummaries, "\n\n--- INTERMEDIATE SUMMARY END ---\n\n")
 
 	// 4. Reduceフェーズ：最終的な統合と構造化のためのLLM呼び出し（Executorに委譲）
-	// 修正: log.Println -> slog.Info
 	slog.Info("中間要約の結合が完了しました。最終的な構造化（Reduceフェーズ）を開始します。")
 
 	finalResponseText, err := c.executor.ExecuteReduce(ctx, finalCombinedText, c.builders.ReduceBuilder)

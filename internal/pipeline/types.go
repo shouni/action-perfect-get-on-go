@@ -13,7 +13,6 @@ import (
 // ----------------------------------------------------------------
 
 // CmdOptions は CLI オプションの値を集約するための構造体です。
-// (元の app.CmdOptions から移動)
 type CmdOptions struct {
 	LLMAPIKey          string
 	LLMTimeout         time.Duration
@@ -21,6 +20,8 @@ type CmdOptions struct {
 	URLFile            string
 	OutputFilePath     string
 	MaxScraperParallel int
+	MapModel           string
+	ReduceModel        string
 }
 
 // ----------------------------------------------------------------

@@ -66,7 +66,13 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	}
 
 	// LLMExecutor の構築
-	executor, err := cleaner.NewLLMConcurrentExecutor(ctx, opts.LLMAPIKey, cleaner.DefaultMaxMapConcurrency)
+	cfg := cleaner.LLMExecutorConfig{
+		APIKeyOverride: opts.LLMAPIKey,
+		Concurrency:    cleaner.DefaultMaxMapConcurrency,
+		MapModel:       opts.MapModel,
+		ReduceModel:    opts.ReduceModel,
+	}
+	executor, err := cleaner.NewLLMConcurrentExecutor(ctx, cfg)
 	if err != nil {
 		return nil, closer, fmt.Errorf("LLM Executorの初期化に失敗しました: %w", err)
 	}
