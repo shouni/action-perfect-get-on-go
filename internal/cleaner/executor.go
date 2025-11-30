@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"action-perfect-get-on-go/internal/prompts"
+
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
