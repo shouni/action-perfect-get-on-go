@@ -47,24 +47,3 @@ func segmentText(text string, maxChars int) []string {
 
 	return segments
 }
-
-// cleanFinalOutput は、LLMの応答から <FINAL_START> と <FINAL_END> マーカーを削除し、
-// マーカー間のクリーンなテキストを抽出します。
-func cleanFinalOutput(llmResponse string) string {
-	startIdx := strings.Index(llmResponse, FinalStartMarker)
-	endIdx := strings.Index(llmResponse, FinalEndMarker)
-
-	// マーカーが見つからない場合は、そのまま返す
-	if startIdx == -1 || endIdx == -1 || startIdx >= endIdx {
-		slog.Warn("⚠️ LLM応答で最終出力マーカーが見つかりませんでした。そのまま応答を返します。",
-			slog.String("marker_start", FinalStartMarker),
-			slog.String("marker_end", FinalEndMarker))
-		return strings.TrimSpace(llmResponse)
-	}
-
-	// <FINAL_START> の直後から <FINAL_END> の直前までを抽出
-	extracted := llmResponse[startIdx+len(FinalStartMarker) : endIdx]
-
-	// 前後の空白文字を削除して返す
-	return strings.TrimSpace(extracted)
-}

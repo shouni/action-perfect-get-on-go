@@ -18,12 +18,6 @@ const DefaultMaxMapConcurrency = 2
 // DefaultLLMRateLimit は、2000msごとに1リクエストを許可するレートリミットです。
 const DefaultLLMRateLimit = 2000 * time.Millisecond
 
-// FinalStartMarker は Reduce プロンプトで定義された最終出力開始マーカーです。
-const FinalStartMarker = "<FINAL_START>"
-
-// FinalEndMarker は Reduce プロンプトで定義された最終出力終了マーカーです。
-const FinalEndMarker = "<FINAL_END>"
-
 // Segment は、LLMに渡すテキストと、それが由来する元のURLを保持します。
 type Segment struct {
 	Text string
