@@ -3,7 +3,7 @@ package cleaner
 import (
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/internal/prompts"
+	"action-perfect-get-on-go/internal/prompts"
 )
 
 // DefaultSeparator は、一般的な段落区切りに使用される標準的な区切り文字です。
@@ -13,10 +13,10 @@ const DefaultSeparator = "\n\n"
 const MaxSegmentChars = 400000
 
 // DefaultMaxMapConcurrency は、Mapフェーズでデフォルトで許可する同時実行数です。
-const DefaultMaxMapConcurrency = 2
+const DefaultMaxMapConcurrency = 1
 
-// DefaultLLMRateLimit は、2000msごとに1リクエストを許可するレートリミットです。
-const DefaultLLMRateLimit = 2000 * time.Millisecond
+// DefaultLLMRateLimit は、2sごとに1リクエストを許可するレートリミットです。
+const DefaultLLMRateLimit = 2 * time.Second
 
 // Segment は、LLMに渡すテキストと、それが由来する元のURLを保持します。
 type Segment struct {

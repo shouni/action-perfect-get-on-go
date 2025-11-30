@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/internal/builder"
-	"github.com/shouni/action-perfect-get-on-go/internal/pipeline"
+	"action-perfect-get-on-go/internal/builder"
+	"action-perfect-get-on-go/internal/pipeline"
+
 	"github.com/spf13/cobra"
 )
 

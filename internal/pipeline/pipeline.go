@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log/slog" // log/slog に変更
+	"log/slog"
 )
 
 // ----------------------------------------------------------------

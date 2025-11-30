@@ -7,7 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shouni/action-perfect-get-on-go/internal/prompts"
+	"action-perfect-get-on-go/internal/prompts"
+
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
