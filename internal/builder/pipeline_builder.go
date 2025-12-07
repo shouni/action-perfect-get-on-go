@@ -89,7 +89,9 @@ func BuildPipeline(ctx context.Context, opts pipeline.CmdOptions) (*pipeline.Pip
 	// ----------------------------------------------------------------
 
 	// 4.1. Text Format Builderの構築 (Converter/Rendererを内部で初期化)
-	textFormatBuilder, err := textformat.NewBuilder()
+	textFormatBuilder, err := textformat.NewBuilder(textformat.BuilderConfig{
+		EnableUnsafeHTML: false,
+	})
 	if err != nil {
 		return nil, closer, fmt.Errorf("Text Format Builderの初期化に失敗しました: %w", err)
 	}
